@@ -39,11 +39,11 @@ public class ClosureCompiler {
 
 		@Override
 		protected void reportError(SourcePosition location, String message) {
-			this.report(message, location.source.name, location.line + 1, location.column);
+			this.report("ERROR: " + message, location.source.name, location.line + 1, location.column);
 		}
 
 		protected void reportWarning(SourcePosition location, String message) {
-			report(message, location.source.name, location.line + 1, location.column);
+			report("WARNING: " + message, location.source.name, location.line + 1, location.column);
 		}
 
 		private void report(String message, String name, int line, int column) {
@@ -77,7 +77,7 @@ public class ClosureCompiler {
 		ast.setDefaultNodeFlag(ASTNode.ORIGINAL);
 		DOMTransformer transformer = new DOMTransformer(ast);
 		ast.setDefaultNodeFlag(0);
-		return transformer.transform(tree);
+		return (JavaScriptUnit) transformer.transform(tree);
 		
 	}
 	
