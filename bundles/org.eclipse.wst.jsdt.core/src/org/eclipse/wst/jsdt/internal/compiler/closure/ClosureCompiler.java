@@ -67,7 +67,6 @@ public class ClosureCompiler {
 	}
 
 	public JavaScriptUnit parse() {
-
 		Config config = new Config(com.google.javascript.jscomp.parsing.parser.Parser.Config.Mode.ES6);
 		SourceFile source = getSourceFile(); 
 		com.google.javascript.jscomp.parsing.parser.util.ErrorReporter err = new TestErrorReporter();
@@ -77,8 +76,7 @@ public class ClosureCompiler {
 		ast.setDefaultNodeFlag(ASTNode.ORIGINAL);
 		DOMTransformer transformer = new DOMTransformer(ast);
 		ast.setDefaultNodeFlag(0);
-		return (JavaScriptUnit) transformer.transform(tree);
-		
+		return transformer.transform(tree);
 	}
 	
 	private SourceFile getSourceFile(){

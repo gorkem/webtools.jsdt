@@ -20,6 +20,8 @@ import org.eclipse.wst.jsdt.core.dom.ArrayAccess;
 import org.eclipse.wst.jsdt.core.dom.ArrayInitializer;
 import org.eclipse.wst.jsdt.core.dom.ArrayName;
 import org.eclipse.wst.jsdt.core.dom.ArrowFunctionExpression;
+import org.eclipse.wst.jsdt.core.dom.Assignment;
+import org.eclipse.wst.jsdt.core.dom.Assignment.Operator;
 import org.eclipse.wst.jsdt.core.dom.Block;
 import org.eclipse.wst.jsdt.core.dom.BooleanLiteral;
 import org.eclipse.wst.jsdt.core.dom.BreakStatement;
@@ -74,6 +76,7 @@ import org.eclipse.wst.jsdt.core.dom.ThrowStatement;
 import org.eclipse.wst.jsdt.core.dom.TryStatement;
 import org.eclipse.wst.jsdt.core.dom.Type;
 import org.eclipse.wst.jsdt.core.dom.TypeDeclaration;
+import org.eclipse.wst.jsdt.core.dom.VariableDeclarationExpression;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.wst.jsdt.core.dom.VariableKind;
@@ -149,6 +152,7 @@ import com.google.javascript.jscomp.parsing.parser.trees.ThrowStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.TryStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.TypeNameTree;
 import com.google.javascript.jscomp.parsing.parser.trees.UnaryExpressionTree;
+import com.google.javascript.jscomp.parsing.parser.trees.VariableDeclarationListTree;
 import com.google.javascript.jscomp.parsing.parser.trees.VariableDeclarationTree;
 import com.google.javascript.jscomp.parsing.parser.trees.VariableStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.WhileStatementTree;
@@ -168,70 +172,96 @@ public class DOMTransformer {
 		this.ast = t;
 	}
 
-    private ASTNode process(ParseTree node) {
+    public <T extends ASTNode> T transform(ParseTree tree) {
+    	if(tree == null )
+    		return null;
+    	//TODO: JSDoc
+//        JSDocInfo info = handleJsDoc(tree);
+        T node = process(tree);
+        if (node == null ) return null;
+//        if (info != null) {
+//          node = maybeInjectCastNode(tree, info, node);
+//          node.setJSDocInfo(info);
+//        }
+
+        setSourceRange(node, tree);
+        return node;
+      }
+   
+    private InfixExpression.Operator convertBinaryOperator(Token operator) {
+		return InfixExpression.Operator.toOperator(operator.toString());
+	}
+
+	private boolean notNullStatement(ParseTree tree){
+		return tree.type != ParseTreeType.NULL;
+	}
+    
+
+
+	private <T extends ASTNode> T process(ParseTree node) {
       switch (node.type) {
         case BINARY_OPERATOR:
-          return processBinaryExpression(node.asBinaryOperator());
+          return (T) processBinaryExpression(node.asBinaryOperator());
         case ARRAY_LITERAL_EXPRESSION:
-          return processArrayLiteral(node.asArrayLiteralExpression());
+          return (T) processArrayLiteral(node.asArrayLiteralExpression());
         case TEMPLATE_LITERAL_EXPRESSION:
-          return processTemplateLiteral(node.asTemplateLiteralExpression());
+          return (T) processTemplateLiteral(node.asTemplateLiteralExpression());
         case TEMPLATE_LITERAL_PORTION:
-          return processTemplateLiteralPortion(node.asTemplateLiteralPortion());
+          return (T) processTemplateLiteralPortion(node.asTemplateLiteralPortion());
         case TEMPLATE_SUBSTITUTION:
-          return processTemplateSubstitution(node.asTemplateSubstitution());
+          return (T) processTemplateSubstitution(node.asTemplateSubstitution());
         case UNARY_EXPRESSION:
-          return processUnaryExpression(node.asUnaryExpression());
+          return (T) processUnaryExpression(node.asUnaryExpression());
         case BLOCK:
-          return processBlock(node.asBlock());
+          return (T) processBlock(node.asBlock());
         case BREAK_STATEMENT:
-          return processBreakStatement(node.asBreakStatement());
+          return (T) processBreakStatement(node.asBreakStatement());
         case CALL_EXPRESSION:
-          return processFunctionCall(node.asCallExpression());
+          return (T) processFunctionCall(node.asCallExpression());
         case SWITCH_STATEMENT:
-        	return processSwitchStatement(node.asSwitchStatement());
+        	return (T) processSwitchStatement(node.asSwitchStatement());
         case CASE_CLAUSE:
-          return processSwitchCase(node.asCaseClause());
+          return (T) processSwitchCase(node.asCaseClause());
         case DEFAULT_CLAUSE:
-          return processSwitchDefault(node.asDefaultClause());
+          return (T) processSwitchDefault(node.asDefaultClause());
         case CATCH:
-          return processCatchClause(node.asCatch());
+          return (T) processCatchClause(node.asCatch());
         case CONTINUE_STATEMENT:
-          return processContinueStatement(node.asContinueStatement());
+          return (T) processContinueStatement(node.asContinueStatement());
         case DO_WHILE_STATEMENT:
-          return processDoLoop(node.asDoWhileStatement());
+          return (T) processDoLoop(node.asDoWhileStatement());
         case EMPTY_STATEMENT:
-          return processEmptyStatement(node.asEmptyStatement());
+          return (T) processEmptyStatement(node.asEmptyStatement());
         case EXPRESSION_STATEMENT:
-          return processExpressionStatement(node.asExpressionStatement());
+          return (T) processExpressionStatement(node.asExpressionStatement());
         case DEBUGGER_STATEMENT:
-          return processDebuggerStatement(node.asDebuggerStatement());
+          return (T) processDebuggerStatement(node.asDebuggerStatement());
         case THIS_EXPRESSION:
-          return processThisExpression(node.asThisExpression());
+          return (T) processThisExpression(node.asThisExpression());
         case FOR_STATEMENT:
-          return processForLoop(node.asForStatement());
+          return (T) processForLoop(node.asForStatement());
         case FOR_IN_STATEMENT:
-          return processForInLoop(node.asForInStatement());
+          return (T) processForInLoop(node.asForInStatement());
         case FUNCTION_DECLARATION:
-          return processFunction(node.asFunctionDeclaration());
+          return (T) processFunction(node.asFunctionDeclaration());
         case MEMBER_LOOKUP_EXPRESSION:
-          return processElementGet(node.asMemberLookupExpression());
+          return (T) processElementGet(node.asMemberLookupExpression());
         case MEMBER_EXPRESSION:
-          return processPropertyGet(node.asMemberExpression());
+          return (T) processPropertyGet(node.asMemberExpression());
         case CONDITIONAL_EXPRESSION:
-          return processConditionalExpression(node.asConditionalExpression());
+          return (T) processConditionalExpression(node.asConditionalExpression());
         case IF_STATEMENT:
-          return processIfStatement(node.asIfStatement());
+          return (T) processIfStatement(node.asIfStatement());
         case LABELLED_STATEMENT:
-          return processLabeledStatement(node.asLabelledStatement());
+          return (T) processLabeledStatement(node.asLabelledStatement());
         case PAREN_EXPRESSION:
-          return processParenthesizedExpression(node.asParenExpression());
+          return (T) processParenthesizedExpression(node.asParenExpression());
         case IDENTIFIER_EXPRESSION:
-          return processName(node.asIdentifierExpression());
+          return (T) processName(node.asIdentifierExpression());
         case NEW_EXPRESSION:
-          return processNewExpression(node.asNewExpression());
+          return (T) processNewExpression(node.asNewExpression());
         case OBJECT_LITERAL_EXPRESSION:
-          return processObjectLiteral(node.asObjectLiteralExpression());
+          return (T) processObjectLiteral(node.asObjectLiteralExpression());
         case COMPUTED_PROPERTY_DEFINITION:
         case COMPUTED_PROPERTY_SETTER:
         case COMPUTED_PROPERTY_GETTER:
@@ -240,33 +270,31 @@ public class DOMTransformer {
         	// Handled on processObjectLiteral should never happen here
         	Assert.isTrue(false);
         case RETURN_STATEMENT:
-          return processReturnStatement(node.asReturnStatement());
+          return (T) processReturnStatement(node.asReturnStatement());
         case POSTFIX_EXPRESSION:
-          return processPostfixExpression(node.asPostfixExpression());
+          return (T) processPostfixExpression(node.asPostfixExpression());
         case PROGRAM:
-          return processAstRoot(node.asProgram());
+          return (T) processAstRoot(node.asProgram());
         case LITERAL_EXPRESSION: // STRING, NUMBER, TRUE, FALSE, NULL, REGEXP
-          return processLiteralExpression(node.asLiteralExpression());
+          return (T) processLiteralExpression(node.asLiteralExpression());
         case THROW_STATEMENT:
-          return processThrowStatement(node.asThrowStatement());
+          return (T) processThrowStatement(node.asThrowStatement());
         case TRY_STATEMENT:
-          return processTryStatement(node.asTryStatement());
+          return (T) processTryStatement(node.asTryStatement());
         case VARIABLE_STATEMENT: // var const let
-          return processVariableStatement(node.asVariableStatement());
+          return (T) processVariableStatement(node.asVariableStatement());
         case VARIABLE_DECLARATION_LIST:
-        	//Handled on processVariableStatement
-        	Assert.isTrue(false);
+          return (T) processVariableDeclarationList(node.asVariableDeclarationList());
         case VARIABLE_DECLARATION:
-          return processVariableDeclaration(node.asVariableDeclaration());
+          return (T) processVariableDeclaration(node.asVariableDeclaration());
         case WHILE_STATEMENT:
-          return processWhileLoop(node.asWhileStatement());
+          return (T) processWhileLoop(node.asWhileStatement());
         case WITH_STATEMENT:
-          return processWithStatement(node.asWithStatement());
-
+          return (T) processWithStatement(node.asWithStatement());
         case COMMA_EXPRESSION:
-          return processCommaExpression(node.asCommaExpression());
+          return (T) processCommaExpression(node.asCommaExpression());
         case NULL: // this is not the null literal
-          return processNull(node.asNull());
+          return (T) processNull(node.asNull());
         case FINALLY:
           return transform(node.asFinally().block);
 
@@ -275,41 +303,41 @@ public class DOMTransformer {
         	// properties skip processing this node type.
         	return null;
         case PROPERTY_NAME_ASSIGNMENT:
-          return processPropertyNameAssignment(node.asPropertyNameAssignment());
+          return (T) processPropertyNameAssignment(node.asPropertyNameAssignment());
         case GET_ACCESSOR:
-          return processGetAccessor(node.asGetAccessor());
+          return (T) processGetAccessor(node.asGetAccessor());
         case SET_ACCESSOR:
-          return processSetAccessor(node.asSetAccessor());
+          return (T) processSetAccessor(node.asSetAccessor());
         case FORMAL_PARAMETER_LIST:
         	//Should be handled on processFunction
         	Assert.isTrue(false);
 
         case CLASS_DECLARATION:
-          return processClassDeclaration(node.asClassDeclaration());
+          return (T) processClassDeclaration(node.asClassDeclaration());
         case SUPER_EXPRESSION:
-          return processSuper(node.asSuperExpression());
+          return (T) processSuper(node.asSuperExpression());
         case YIELD_EXPRESSION:
-          return processYield(node.asYieldStatement());
+          return (T) processYield(node.asYieldStatement());
         case FOR_OF_STATEMENT:
-          return processForOf(node.asForOfStatement());
+          return (T) processForOf(node.asForOfStatement());
 
         case EXPORT_DECLARATION:
-          return processExportDecl(node.asExportDeclaration());
+          return (T) processExportDecl(node.asExportDeclaration());
         case EXPORT_SPECIFIER:
-          return processExportSpec(node.asExportSpecifier());
+          return (T) processExportSpec(node.asExportSpecifier());
         case IMPORT_DECLARATION:
-          return processImportDecl(node.asImportDeclaration());
+          return (T) processImportDecl(node.asImportDeclaration());
         case IMPORT_SPECIFIER:
-          return processImportSpec(node.asImportSpecifier());
+          return (T) processImportSpec(node.asImportSpecifier());
         case MODULE_IMPORT:
-          return processModuleImport(node.asModuleImport());
+          return (T) processModuleImport(node.asModuleImport());
 
         case ARRAY_PATTERN:
-          return processArrayPattern(node.asArrayPattern());
+          return (T) processArrayPattern(node.asArrayPattern());
         case OBJECT_PATTERN:
-          return processObjectPattern(node.asObjectPattern());
+          return (T) processObjectPattern(node.asObjectPattern());
         case ASSIGNMENT_REST_ELEMENT:
-          return processAssignmentRestElement(node.asAssignmentRestElement());
+          return (T) processAssignmentRestElement(node.asAssignmentRestElement());
 
 //        case COMPREHENSION:
 //          return processComprehension(node.asComprehension());
@@ -319,15 +347,15 @@ public class DOMTransformer {
 //          return processComprehensionIf(node.asComprehensionIf());
 
         case DEFAULT_PARAMETER:
-          return processDefaultParameter(node.asDefaultParameter());
+          return (T) processDefaultParameter(node.asDefaultParameter());
         case REST_PARAMETER:
-          return processRestParameter(node.asRestParameter());
+          return (T) processRestParameter(node.asRestParameter());
         case SPREAD_EXPRESSION:
-          return processSpreadExpression(node.asSpreadExpression());
+          return (T) processSpreadExpression(node.asSpreadExpression());
 
         // ES6 Typed
         case TYPE_NAME:
-          return processTypeName(node.asTypeName());
+          return (T) processTypeName(node.asTypeName());
 //        case TYPED_PARAMETER:
 //          return processTypedParameter(node.asTypedParameter());
 //        case OPTIONAL_PARAMETER:
@@ -371,73 +399,18 @@ public class DOMTransformer {
         default:
           break;
       }
-      return processIllegalToken(node);
+      return (T) processIllegalToken(node);
     }
-   
-    private ASTNode processIllegalToken(ParseTree node) {
-    	System.out.println( "Unsupported syntax: " + node.type +" at "+ node.location.start.line +1);
-        return ast.newEmptyStatement();
-      }
-    
-
 
 	/**
-	 * @param asTypeName
+	 * @param asArrayLiteralExpression
 	 * @return
 	 */
-	private ASTNode processTypeName(TypeNameTree tree) {
-		Name $ = null;
-		Iterator<String> segmentsIt = tree.segments.iterator();
-		while(segmentsIt.hasNext()){
-			SimpleName n = ast.newSimpleName(segmentsIt.next());
-			if($ == null ){
-				$ = n;
-			}else{
-				$ = ast.newQualifiedName($,n);
-			}
-		}
-		return $;
-	}
-
-	/**
-	 * @param asRestParameter
-	 * @return
-	 */
-	private ASTNode processRestParameter(RestParameterTree tree) {
-		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
-		$.setName(transformLabelName(tree.identifier.asIdentifier()));
-		$.setVarargs(true);
-		return $;
-	}
-
-	/**
-	 * @param asDefaultParameter
-	 * @return
-	 */
-	private ASTNode processDefaultParameter(DefaultParameterTree tree) {
-		// TODO: handle default values properly. DOM ast does not have support 
-		// for it and needs to be enhanced.
-		return transform(tree.lhs);
-	}
-
-	/**
-	 * @param asAssignmentRestElement
-	 * @return
-	 */
-	private ASTNode processAssignmentRestElement(AssignmentRestElementTree tree) {
-		RestElementName $ = ast.newRestElementName();
-		$.setArgument(transformLabelName(tree.identifier));
-		return $;
-	}
-
-	/**
-	 * @param asObjectPattern
-	 * @return
-	 */
-	private ASTNode processObjectPattern(ObjectPatternTree tree) {
-		ObjectName $ = ast.newObjectName();
-		for(ParseTree child: tree.fields){
-			$.objectProperties().add(transform(child));
+	private ASTNode processArrayLiteral(ArrayLiteralExpressionTree tree) {
+		ArrayInitializer $ = ast.newArrayInitializer();
+		for ( ParseTree pe : tree.elements) {
+			if(notNullStatement(pe))
+				$.expressions().add(transform(pe));
 		}
 		return $;
 	}
@@ -455,89 +428,90 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asModuleImport
+	 * @param asAssignmentRestElement
 	 * @return
 	 */
-	private ASTNode processModuleImport(ModuleImportTree tree) {
-		ImportDeclaration $ = ast.newImportDeclaration();
-		ModuleSpecifier m = ast.newModuleSpecifier();
-		m.setLocal(transformLabelName(tree.name));
-		m.setDiscoverableName(transformLabelName(tree.from.asIdentifier()));
-		m.setNamespace(true);
-		$.specifiers().add(m);
+	private ASTNode processAssignmentRestElement(AssignmentRestElementTree tree) {
+		RestElementName $ = ast.newRestElementName();
+		$.setArgument(transformLabelName(tree.identifier));
 		return $;
 	}
 
 	/**
-	 * @param asImportSpecifier
+	 * @param asProgram
 	 * @return
 	 */
-	private ASTNode processImportSpec(ImportSpecifierTree tree) {
-		ModuleSpecifier $ = ast.newModuleSpecifier();
-		$.setDiscoverableName(transformLabelName(tree.destinationName.asIdentifier()));
-		$.setLocal(transformLabelName(tree.importedName.asIdentifier()));
-		return $;
-	}
-
-	/**
-	 * @param asImportDeclaration
-	 * @return
-	 */
-	private ASTNode processImportDecl(ImportDeclarationTree tree) {
-		ImportDeclaration $ = ast.newImportDeclaration();
-		if(tree.defaultBindingIdentifier != null){
-			$.setName(transformLabelName(tree.defaultBindingIdentifier));
-		}
-		if(tree.nameSpaceImportIdentifier != null ){
-			ModuleSpecifier m = ast.newModuleSpecifier();
-			m.setNamespace(true);
-			m.setLocal(transformLabelName(tree.nameSpaceImportIdentifier.asIdentifier()));
-			setSourceRange(m,tree);
-		}else{
-			for(ParseTree spec : tree.importSpecifierList){
-				$.specifiers().add(transform(spec));
+	private ASTNode processAstRoot(ProgramTree tree) {
+		JavaScriptUnit $ = ast.newJavaScriptUnit();
+	    for (ParseTree child : tree.sourceElements) {
+	    	ASTNode node =  transform(child);
+	    	switch (node.getNodeType()) {
+				case ASTNode.EXPORT_DECLARATION :
+					$.exports().add(node);
+					break;
+				case ASTNode.IMPORT_DECLARATION : 
+					$.imports().add(node);
+					break;
+				default :
+					$.statements().add(node);
+					break;
 			}
+	    }
+		return $;
+	}
+
+	/**
+	 * @param asBinaryOperator
+	 * @return
+	 */
+	private ASTNode processBinaryExpression(BinaryOperatorTree tree) {
+		Operator assignOp = Assignment.Operator.toOperator(tree.operator.toString());
+		if(assignOp != null){
+			Assignment $ = ast.newAssignment();
+			$.setLeftHandSide((Expression) transform(tree.left));
+			$.setRightHandSide((Expression) transform(tree.right));
+			$.setOperator(assignOp);
+			return $;
+		}
+		InfixExpression $ = ast.newInfixExpression();
+		$.setLeftOperand((Expression) transform(tree.left));
+		$.setRightOperand((Expression) transform(tree.right));
+		$.setOperator(convertBinaryOperator(tree.operator));
+		return $;
+	}
+
+	/**
+	 * @param asBlock
+	 * @return
+	 */
+	private ASTNode processBlock(BlockTree tree) {
+		Block $ = ast.newBlock();
+		for (ParseTree pt : tree.statements) {
+			$.statements().add(transform(pt));
 		}
 		return $;
 	}
 
 	/**
-	 * @param asExportSpecifier
+	 * @param asBreakStatement
 	 * @return
 	 */
-	private ASTNode processExportSpec(ExportSpecifierTree tree) {
-		ModuleSpecifier $ = ast.newModuleSpecifier();
-		$.setLocal(transformLabelName(tree.importedName));
-		$.setDiscoverableName(transformLabelName(tree.destinationName));
+	private ASTNode processBreakStatement(BreakStatementTree tree) {
+		BreakStatement $ = ast.newBreakStatement();
+		if(tree.name != null)
+			$.setLabel(transformLabelName(tree.name));
 		return $;
 	}
 
 	/**
-	 * @param asExportDeclaration
+	 * @param asCatch
 	 * @return
 	 */
-	private ASTNode processExportDecl(ExportDeclarationTree tree) {
-		ExportDeclaration $ = ast.newExportDeclaration();
-		$.setAll(tree.isExportAll);
-		$.setDefault(tree.isDefault);
-		$.setDeclaration((ProgramElement) transform(tree.declaration));
-		for(ParseTree spec : tree.exportSpecifierList){
-			$.specifiers().add(transform(spec));
-		}
-		if(tree.from != null){
-			$.setSource(transformStringLiteral(tree.from));
-		}
+	private ASTNode processCatchClause(CatchTree tree) {
+		CatchClause $ = ast.newCatchClause();
+		$.setException(convertToSingleVariableDeclaration(transform(tree.exception)));
+		$.setBody((Block) transform(tree.catchBody));
 		return $;
-	}
-
-	/**
-	 * @param asSuperExpression
-	 * @return
-	 */
-	private ASTNode processSuper(SuperExpressionTree tree) {
-		//FIXME: we need a better way to handle super references. Simply
-		// treating as a name is not enough.
-		return ast.newSimpleName("super");
 	}
 
 	/**
@@ -556,18 +530,247 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asSetAccessor
+	 * @param asCommaExpression
 	 * @return
 	 */
-	private ASTNode processSetAccessor(SetAccessorTree tree) {
+	private ASTNode processCommaExpression(CommaExpressionTree tree) {
+		ListExpression $ = ast.newListExpression();
+		for(ParseTree expr : tree.expressions){
+			$.expressions().add(transform(expr));
+		}
+		return $;
+	}
+
+	/**
+	 * @param asConditionalExpression
+	 * @return
+	 */
+	private ASTNode processConditionalExpression(ConditionalExpressionTree tree) {
+		ConditionalExpression $ = ast.newConditionalExpression();
+		$.setExpression( (Expression) transform(tree.condition));
+		$.setThenExpression((Expression) transform(tree.left));
+		$.setElseExpression((Expression) transform(tree.right));
+		return $;
+	}
+
+	/**
+	 * @param asContinueStatement
+	 * @return
+	 */
+	private ASTNode processContinueStatement(ContinueStatementTree tree) {
+		ContinueStatement $ = ast.newContinueStatement();
+		if(tree.name != null)
+			$.setLabel(transformLabelName(tree.name));
+		return $;
+	}
+
+	/**
+	 * @param asDebuggerStatement
+	 * @return
+	 */
+	private ASTNode processDebuggerStatement(DebuggerStatementTree tree) {
+		return ast.newDebuggerStatement();
+	}
+
+	/**
+	 * @param asDefaultParameter
+	 * @return
+	 */
+	private ASTNode processDefaultParameter(DefaultParameterTree tree) {
+		// TODO: handle default values properly. DOM ast does not have support 
+		// for it and needs to be enhanced.
+		return transform(tree.lhs);
+	}
+
+	/**
+	 * @param asDoWhileStatement
+	 * @return
+	 */
+	private ASTNode processDoLoop(DoWhileStatementTree tree) {
+		DoStatement $ = ast.newDoStatement();
+		$.setExpression((Expression) transform(tree.condition));
+		$.setBody((Statement) transform(tree.body));
+		return $;
+	}
+
+	/**
+	 * @param asMemberLookupExpression
+	 * @return
+	 */
+	private ASTNode processElementGet(MemberLookupExpressionTree tree) {
+		ArrayAccess $ = ast.newArrayAccess();
+		$.setArray((Expression) transform(tree.memberExpression));
+		$.setIndex((Expression) transform(tree.operand));
+		return $;
+	}
+
+	/**
+	 * @param asEmptyStatement
+	 * @return
+	 */
+	private ASTNode processEmptyStatement(EmptyStatementTree tree) {
+		return ast.newEmptyStatement();
+	}
+
+	/**
+	 * @param asExportDeclaration
+	 * @return
+	 */
+	private ASTNode processExportDecl(ExportDeclarationTree tree) {
+		ExportDeclaration $ = ast.newExportDeclaration();
+		$.setAll(tree.isExportAll);
+		$.setDefault(tree.isDefault);
+		if(tree.declaration != null)
+		{
+			if(tree.declaration.type == ParseTreeType.VARIABLE_DECLARATION_LIST){
+				VariableDeclarationListTree vdTree = tree.declaration.asVariableDeclarationList();
+				VariableDeclarationStatement statement = ast.newVariableDeclarationStatement();
+				for(ParseTree child : vdTree.declarations){
+					statement.fragments().add(transform(child));
+				}
+				$.setDeclaration(statement);
+			}else{
+				$.setDeclaration((ProgramElement) transform(tree.declaration));
+			}
+		}
+		if (tree.exportSpecifierList != null) {
+			for (ParseTree spec : tree.exportSpecifierList) {
+				$.specifiers().add(transform(spec));
+			}
+		}
+		if(tree.from != null){
+			$.setSource(transformStringLiteral(tree.from));
+		}
+		return $;
+	}
+
+	/**
+	 * @param asExportSpecifier
+	 * @return
+	 */
+	private ASTNode processExportSpec(ExportSpecifierTree tree) {
+		ModuleSpecifier $ = ast.newModuleSpecifier();
+		$.setLocal(transformLabelName(tree.importedName));
+		if(tree.destinationName != null)
+			$.setDiscoverableName(transformLabelName(tree.destinationName));
+		return $;
+	}
+
+	/**
+	 * @param asExpressionStatement
+	 * @return
+	 */
+	private ASTNode processExpressionStatement(ExpressionStatementTree tree ) {
+		ExpressionStatement $ = ast.newExpressionStatement();
+		Expression e = (Expression) transform(tree.expression);
+		if( e != null )
+			$.setExpression(e);
+		return $;
+	}
+
+	/**
+	 * @param asForInStatement
+	 * @return
+	 */
+	private ASTNode processForInLoop(ForInStatementTree tree) {
+		ForInStatement $ = ast.newForInStatement();
+		$.setBody((Statement) transform(tree.body));
+		$.setIterationVariable((Expression)transform(tree.initializer));
+		$.setCollection((Expression) transform(tree.collection));
+		return $;
+	}
+	
+	/**
+	 * @param asForStatement
+	 * @return
+	 */
+	private ASTNode processForLoop(ForStatementTree tree) {
+		ForStatement $ = ast.newForStatement();
+		$.setBody((Statement) transform(tree.body));
+		if(notNullStatement(tree.condition))
+			$.setExpression((Expression) transform(tree.condition));
+		if(notNullStatement(tree.initializer)){
+			if(tree.initializer.type == ParseTreeType.VARIABLE_DECLARATION_LIST){
+				VariableDeclarationListTree listTree = tree.initializer.asVariableDeclarationList();
+				for(ParseTree child : listTree.declarations){
+					$.initializers().add(ast.newVariableDeclarationExpression(transform(child)));
+				}
+			}else{
+				$.initializers().add(transform(tree.initializer));
+			}
+		}
+		if( notNullStatement(tree.increment))
+			$.updaters().add(transform(tree.increment));
+		return $;
+	}	
+
+	/**
+	 * @param asForOfStatement
+	 * @return
+	 */
+	private ASTNode processForOf(ForOfStatementTree tree) {
+		ForOfStatement $ = ast.newForOfStatement();
+		$.setBody((Statement) transform(tree.body));
+		$.setCollection((Expression) transform(tree.collection));
+		return $;
+	}
+
+	/**
+	 * @param asFunctionDeclaration
+	 * @return
+	 */
+	private <T extends ASTNode> T processFunction(FunctionDeclarationTree tree) {
+		
+		if(tree.kind == FunctionDeclarationTree.Kind.ARROW){
+			ArrowFunctionExpression $ = ast.newArrowFunctionExpression();
+			$.setBody((Block) transform(tree.functionBody));
+			for(ParseTree param : tree.formalParameterList.parameters){
+				$.parameters().add(transform(param));
+			}
+			return (T) $;
+		}
+		//TODO: Kind.Member
+		
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
-		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
-		$.setBody((Block) transform(tree.body));
-		final SingleVariableDeclaration p = ast.newSingleVariableDeclaration();
-		p.setName(transformLabelName(tree.parameter));
-		$.parameters().add(p);
-		if(tree.isStatic){
+		$.setGenerator(tree.isGenerator);
+		$.setBody((Block) transform(tree.functionBody));
+		if(tree.name != null )
+			$.setMethodName(transformLabelName(tree.name));
+		if(tree.isStatic)
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		
+		for(ParseTree param : tree.formalParameterList.parameters){
+			$.parameters().add(convertToSingleVariableDeclaration(transform(param)));
+		}
+		if(tree.returnType != null ){
+			$.setReturnType2((Type) transform(tree.returnType));
+		}
+		// Kind.Expression
+		if(tree.kind == Kind.EXPRESSION) {
+			FunctionExpression e = ast.newFunctionExpression();
+			e.setMethod($);
+			return (T) e;
+		}
+		//Kind.Declaration
+		return (T) ast.newFunctionDeclarationStatement($);
+			
+	}
+
+	/**
+	 * @param asCallExpression
+	 * @return
+	 */
+	private ASTNode processFunctionCall(CallExpressionTree tree) {
+		FunctionInvocation $  = ast.newFunctionInvocation();
+		ASTNode expr = transform(tree.operand);
+		if(expr.getNodeType() == ASTNode.SIMPLE_NAME){
+			$.setName((SimpleName) expr);
+		}else{
+			$.setExpression((Expression) expr);
+		}
+		
+		for (ParseTree pt : tree.arguments.arguments) {
+			$.arguments().add(transform(pt));
 		}
 		return $;
 	}
@@ -586,83 +789,68 @@ public class DOMTransformer {
 		}
 		return $;
 	}
-
+	
 	/**
-	 * @param asPropertyNameAssignment
+	 * @param asIfStatement
 	 * @return
 	 */
-	private ASTNode processPropertyNameAssignment(PropertyNameAssignmentTree tree) {
-		VariableDeclarationFragment vdf = ast.newVariableDeclarationFragment();
-		vdf.setName(transformLabelName((IdentifierToken) tree.name));
-		vdf.setInitializer((Expression) transform(tree.value));
-		FieldDeclaration $ = ast.newFieldDeclaration(vdf);
+	private ASTNode processIfStatement(IfStatementTree tree) {
+		IfStatement $ = ast.newIfStatement();
+		$.setExpression((Expression) transform(tree.condition));
+		$.setThenStatement((Statement) transform(tree.ifClause));
+		if(tree.elseClause != null)
+			$.setElseStatement((Statement) transform(tree.elseClause));
 		return $;
 	}
 
+	private ASTNode processIllegalToken(ParseTree node) {
+    	System.out.println( "Unsupported syntax: " + node.type +" at "+ node.location.start.line +1);
+        return ast.newEmptyStatement();
+      }
+	
 	/**
-	 * @param asParenExpression
+	 * @param asImportDeclaration
 	 * @return
 	 */
-	private ASTNode processParenthesizedExpression(ParenExpressionTree tree) {
-		ParenthesizedExpression $ = ast.newParenthesizedExpression();
-		$.setExpression((Expression) transform(tree.expression));
-		return $;
-	}
-
-	/**
-	 * @param asNull
-	 * @return
-	 */
-	private ASTNode processNull(NullTree tree) {
-		return ast.newEmptyStatement();
-	}
-
-	/**
-	 * @param asCommaExpression
-	 * @return
-	 */
-	private ASTNode processCommaExpression(CommaExpressionTree tree) {
-		ListExpression $ = ast.newListExpression();
-		for(ParseTree expr : tree.expressions){
-			$.expressions().add(transform(expr));
+	private ASTNode processImportDecl(ImportDeclarationTree tree) {
+		ImportDeclaration $ = ast.newImportDeclaration();
+		if(tree.defaultBindingIdentifier != null){
+			$.setName(transformLabelName(tree.defaultBindingIdentifier));
+		}
+		if(tree.nameSpaceImportIdentifier != null ){
+			ModuleSpecifier m = ast.newModuleSpecifier();
+			m.setNamespace(true);
+			m.setLocal(transformLabelName(tree.nameSpaceImportIdentifier.asIdentifier()));
+			setSourceRange(m,tree);
+		}else if(tree.importSpecifierList != null){
+			for(ParseTree spec : tree.importSpecifierList){
+				$.specifiers().add(transform(spec));
+			}
 		}
 		return $;
 	}
 
+
 	/**
-	 * @param asVariableDeclaration
+	 * @param asImportSpecifier
 	 * @return
 	 */
-	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
-		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
-		//TODO: Handle destructuring assignment
-		$.setName((SimpleName) transform(tree.lvalue));
-		if(tree.initializer != null){
-			$.setInitializer((Expression) transform(tree.initializer));
-		}
+	private ASTNode processImportSpec(ImportSpecifierTree tree) {
+		ModuleSpecifier $ = ast.newModuleSpecifier();
+		if(tree.destinationName != null)
+			$.setDiscoverableName(transformLabelName(tree.destinationName.asIdentifier()));
+		$.setLocal(transformLabelName(tree.importedName.asIdentifier()));
 		return $;
 	}
 
 	/**
-	 * @param asVariableStatement
+	 * @param asLabelledStatement
 	 * @return
 	 */
-	private ASTNode processVariableStatement(VariableStatementTree tree) {
-		VariableDeclarationStatement $ = ast.newVariableDeclarationStatement();
-		switch (tree.declarations.declarationType) {
-			case CONST :
-				$.setKind(VariableKind.CONST);
-				break;
-			case LET: 
-				$.setKind(VariableKind.LET);
-				break;
-			default :
-				$.setKind(VariableKind.VAR);
-				break;
-		}
-		for(ParseTree decl : tree.declarations.declarations){
-			$.fragments().add(transform(decl));
-		}
+	private ASTNode processLabeledStatement(LabelledStatementTree tree) {
+		LabeledStatement $ = ast.newLabeledStatement();
+		$.setLabel(transformLabelName(tree.name));
+		$.setBody((Statement) transform(tree.statement));
 		return $;
 	}
 
@@ -689,42 +877,50 @@ public class DOMTransformer {
 		                      + tree.literalToken.type);
 		}
 	}
-	
-	private ASTNode transformRegExpLiteral(Token token) {
-		RegularExpressionLiteral $ = ast.newRegularExpressionLiteral(token.asLiteral().value);
-		setSourceRange($,token);
-		return $;
-	}	
 
-	private ASTNode transformNullLiteral(Token token) {
-		NullLiteral $ = ast.newNullLiteral();
-		setSourceRange($,token);
+	/**
+	 * @param asModuleImport
+	 * @return
+	 */
+	private ASTNode processModuleImport(ModuleImportTree tree) {
+		ImportDeclaration $ = ast.newImportDeclaration();
+		ModuleSpecifier m = ast.newModuleSpecifier();
+		m.setLocal(transformLabelName(tree.name));
+		m.setDiscoverableName(transformLabelName(tree.from.asIdentifier()));
+		m.setNamespace(true);
+		$.specifiers().add(m);
 		return $;
 	}
 
-	private ASTNode transformBooleanLiteral(Token token) {
-		BooleanLiteral $ = ast.newBooleanLiteral(token.type == TokenType.TRUE);
-		setSourceRange($,token);
+	/**
+	 * @param asIdentifierExpression
+	 * @return
+	 */
+	private ASTNode processName(IdentifierExpressionTree tree) {
+		return transformLabelName(tree.identifierToken);
+	}
+
+	/**
+	 * @param asNewExpression
+	 * @return
+	 */
+	private ASTNode processNewExpression(NewExpressionTree tree) {
+		ClassInstanceCreation $ = ast.newClassInstanceCreation();
+		$.setExpression((Expression) transform(tree.operand));
+		if(tree.arguments != null ){
+			for(ParseTree arg : tree.arguments.arguments){
+				$.arguments().add(transform(arg));
+			}
+		}
 		return $;
 	}
 
-	private StringLiteral transformStringLiteral(Token token) {
-		StringLiteral $ = ast.newStringLiteral(token.asLiteral().value);
-		setSourceRange($,token);
-		return $;
-	}
-
-	private ASTNode transformNumberLiteral(Token token) {
-        NumberLiteral $ = ast.newNumberLiteral(token.asLiteral().value);
-        setSourceRange($, token);
-        return $;
-      }
-	
-	private FunctionExpression transformAsFunctionExpression(ParseTree tree){
-		FunctionExpression $ = ast.newFunctionExpression();
-		$.setMethod((FunctionDeclaration) transform(tree));
-		setSourceRange($,tree);
-		return $;
+	/**
+	 * @param asNull
+	 * @return
+	 */
+	private ASTNode processNull(NullTree tree) {
+		return ast.newEmptyStatement();
 	}
 
 	/**
@@ -789,51 +985,38 @@ public class DOMTransformer {
 		}
 		return $;
 	}
-	
-	private SimpleName transformObjectLitKeyAsString(com.google.javascript.jscomp.parsing.parser.Token token) {
-		SimpleName $ = null;
-		if (token == null) {
-			$ = ast.newSimpleName("");
-		}
-		else if (token.type == TokenType.IDENTIFIER) {
-			$ = transformLabelName(token.asIdentifier());
-		}
-		else {// literal or number
-			$ = ast.newSimpleName(token.asLiteral().value);
+
+	/**
+	 * @param asObjectPattern
+	 * @return
+	 */
+	private ASTNode processObjectPattern(ObjectPatternTree tree) {
+		ObjectName $ = ast.newObjectName();
+		for(ParseTree child: tree.fields){
+			$.objectProperties().add(transform(child));
 		}
 		return $;
 	}
 
-
 	/**
-	 * @param asProgram
+	 * @param asParenExpression
 	 * @return
 	 */
-	private ASTNode processAstRoot(ProgramTree tree) {
-		JavaScriptUnit $ = ast.newJavaScriptUnit();
-	    for (ParseTree child : tree.sourceElements) {
-	    	ASTNode node =  transform(child);
-	    	switch (node.getNodeType()) {
-				case ASTNode.EXPORT_DECLARATION :
-					$.exports().add(node);
-					break;
-				case ASTNode.IMPORT_DECLARATION : 
-					$.imports().add(node);
-					break;
-				default :
-					$.statements().add(node);
-					break;
-			}
-	    }
+	private ASTNode processParenthesizedExpression(ParenExpressionTree tree) {
+		ParenthesizedExpression $ = ast.newParenthesizedExpression();
+		$.setExpression((Expression) transform(tree.expression));
 		return $;
 	}
 
 	/**
-	 * @param asIdentifierExpression
+	 * @param asPostfixExpression
 	 * @return
 	 */
-	private ASTNode processName(IdentifierExpressionTree tree) {
-		return transformLabelName(tree.identifierToken);
+	private ASTNode processPostfixExpression(PostfixExpressionTree tree) {
+		PostfixExpression $ = ast.newPostfixExpression();
+		$.setOperand((Expression) transform(tree.operand));
+		$.setOperator(org.eclipse.wst.jsdt.core.dom.PostfixExpression.Operator.toOperator(tree.operator.toString()));
+		return $;
 	}
 
 	/**
@@ -848,144 +1031,25 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asMemberLookupExpression
+	 * @param asPropertyNameAssignment
 	 * @return
 	 */
-	private ASTNode processElementGet(MemberLookupExpressionTree tree) {
-		ArrayAccess $ = ast.newArrayAccess();
-		$.setArray((Expression) transform(tree.memberExpression));
-		$.setIndex((Expression) transform(tree.operand));
+	private ASTNode processPropertyNameAssignment(PropertyNameAssignmentTree tree) {
+		VariableDeclarationFragment vdf = ast.newVariableDeclarationFragment();
+		vdf.setName(transformLabelName((IdentifierToken) tree.name));
+		vdf.setInitializer((Expression) transform(tree.value));
+		FieldDeclaration $ = ast.newFieldDeclaration(vdf);
 		return $;
 	}
 
 	/**
-	 * @param asFunctionDeclaration
+	 * @param asRestParameter
 	 * @return
 	 */
-	private ASTNode processFunction(FunctionDeclarationTree tree) {
-		
-		if(tree.kind == FunctionDeclarationTree.Kind.ARROW){
-			ArrowFunctionExpression $ = ast.newArrowFunctionExpression();
-			$.setBody((Block) transform(tree.functionBody));
-			for(ParseTree param : tree.formalParameterList.parameters){
-				$.parameters().add(transform(param));
-			}
-			return $;
-		}
-		//TODO: Kind.Member
-		
-		FunctionDeclaration $ = ast.newFunctionDeclaration();
-		$.setGenerator(tree.isGenerator);
-		$.setBody((Block) transform(tree.functionBody));
-		$.setMethodName(transformLabelName(tree.name));
-		if(tree.isStatic)
-			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
-		
-		for(ParseTree param : tree.formalParameterList.parameters){
-			$.parameters().add(transform(param));
-		}
-		if(tree.returnType != null ){
-			$.setReturnType2((Type) transform(tree.returnType));
-		}
-		// Kind.Expression
-		if(tree.kind == Kind.EXPRESSION) {
-			return $;
-		}
-		//Kind.Declaration
-		return ast.newFunctionDeclarationStatement($);
-			
-	}
-
-	/**
-	 * @param asSpreadExpression
-	 * @return
-	 */
-	private ASTNode processSpreadExpression(SpreadExpressionTree tree) {
-		SpreadElement $ = ast.newSpreadElement();
-		$.setArgument((Expression) transform(tree.expression));
-		return $;
-	}
-
-	/**
-	 * @param asForOfStatement
-	 * @return
-	 */
-	private ASTNode processForOf(ForOfStatementTree tree) {
-		ForOfStatement $ = ast.newForOfStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setCollection((Expression) transform(tree.collection));
-		return $;
-	}
-
-	/**
-	 * @param asYieldStatement
-	 * @return
-	 */
-	private ASTNode processYield(YieldExpressionTree tree) {
-		YieldExpression $ = ast.newYieldExpression();
-		$.setDelegate(Boolean.valueOf(tree.isYieldFor));
-		if(tree.expression != null ){
-			$.setArgument((Expression) transform(tree.expression));
-		}
-		return $;
-	}
-
-	/**
-	 * @param asWithStatement
-	 * @return
-	 */
-	private ASTNode processWithStatement(WithStatementTree tree) {
-		WithStatement $ = ast.newWithStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setExpression((Expression) transform(tree.expression));
-		return $;
-	}
-
-	/**
-	 * @param asWhileStatement
-	 * @return
-	 */
-	private ASTNode processWhileLoop(WhileStatementTree tree) {
-		WhileStatement $ = ast.newWhileStatement();
-		$.setExpression((Expression) transform(tree.condition));
-		$.setBody((Statement) transform(tree.body));
-		return $;
-	}
-
-	/**
-	 * @param asTryStatement
-	 * @return
-	 */
-	private ASTNode processTryStatement(TryStatementTree tree) {
-		TryStatement $ = ast.newTryStatement();
-		$.setBody((Block) transform(tree.body));
-		if(tree.catchBlock != null ){
-			$.catchClauses().add(transform(tree.catchBlock));
-		}
-		if(tree.finallyBlock != null ){
-			$.setFinally((Block) transform(tree.finallyBlock));
-		}
-		return $;
-	}
-
-	/**
-	 * @param asThrowStatement
-	 * @return
-	 */
-	private ASTNode processThrowStatement(ThrowStatementTree tree) {
-		ThrowStatement $ = ast.newThrowStatement();
-		$.setExpression((Expression) transform(tree.value));
-		return $;	
-	}
-
-	/**
-	 * @param asPostfixExpression
-	 * @return
-	 */
-	private ASTNode processPostfixExpression(PostfixExpressionTree tree) {
-		PostfixExpression $ = ast.newPostfixExpression();
-		$.setOperand((Expression) transform(tree.operand));
-		$.setOperator(org.eclipse.wst.jsdt.core.dom.PostfixExpression.Operator.toOperator(tree.operator.toString()));
+	private ASTNode processRestParameter(RestParameterTree tree) {
+		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
+		$.setName(transformLabelName(tree.identifier.asIdentifier()));
+		$.setVarargs(true);
 		return $;
 	}
 
@@ -1001,149 +1065,60 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asNewExpression
+	 * @param asSetAccessor
 	 * @return
 	 */
-	private ASTNode processNewExpression(NewExpressionTree tree) {
-		ClassInstanceCreation $ = ast.newClassInstanceCreation();
-		$.setExpression((Expression) transform(tree.operand));
-		if(tree.arguments != null ){
-			for(ParseTree arg : tree.arguments.arguments){
-				$.arguments().add(transform(arg));
-			}
+	private ASTNode processSetAccessor(SetAccessorTree tree) {
+		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
+		$.setBody((Block) transform(tree.body));
+		final SingleVariableDeclaration p = ast.newSingleVariableDeclaration();
+		p.setName(transformLabelName(tree.parameter));
+		$.parameters().add(p);
+		if(tree.isStatic){
+			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
 		return $;
 	}
 
 	/**
-	 * @param asLabelledStatement
+	 * @param asSpreadExpression
 	 * @return
 	 */
-	private ASTNode processLabeledStatement(LabelledStatementTree tree) {
-		LabeledStatement $ = ast.newLabeledStatement();
-		$.setLabel(transformLabelName(tree.name));
-		$.setBody((Statement) transform(tree.statement));
+	private ASTNode processSpreadExpression(SpreadExpressionTree tree) {
+		SpreadElement $ = ast.newSpreadElement();
+		$.setArgument((Expression) transform(tree.expression));
 		return $;
 	}
 
 	/**
-	 * @param asIfStatement
+	 * @param asSuperExpression
 	 * @return
 	 */
-	private ASTNode processIfStatement(IfStatementTree tree) {
-		IfStatement $ = ast.newIfStatement();
-		$.setExpression((Expression) transform(tree.condition));
-		$.setThenStatement((Statement) transform(tree.ifClause));
-		if(tree.elseClause != null)
-			$.setElseStatement((Statement) transform(tree.elseClause));
+	private ASTNode processSuper(SuperExpressionTree tree) {
+		//FIXME: we need a better way to handle super references. Simply
+		// treating as a name is not enough.
+		return ast.newSimpleName("super");
+	}
+
+	/**
+	 * @param asCaseClause
+	 * @return
+	 */
+	private ASTNode processSwitchCase(CaseClauseTree tree) {
+		// statements of CaseClauseTree are handled on processSwitchStatement()
+		SwitchCase $ = ast.newSwitchCase();
+		$.setExpression((Expression) transform(tree.expression));
 		return $;
 	}
 
 	/**
-	 * @param asConditionalExpression
+	 * @param asDefaultClause
 	 * @return
 	 */
-	private ASTNode processConditionalExpression(ConditionalExpressionTree tree) {
-		ConditionalExpression $ = ast.newConditionalExpression();
-		$.setExpression( (Expression) transform(tree.condition));
-		$.setThenExpression((Expression) transform(tree.left));
-		$.setElseExpression((Expression) transform(tree.right));
-		return $;
-	}
-
-	/**
-	 * @param asForInStatement
-	 * @return
-	 */
-	private ASTNode processForInLoop(ForInStatementTree tree) {
-		ForInStatement $ = ast.newForInStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setIterationVariable((Statement) transform(tree.initializer));
-		$.setCollection((Expression) transform(tree.collection));
-		return $;
-	}
-
-	/**
-	 * @param asForStatement
-	 * @return
-	 */
-	private ASTNode processForLoop(ForStatementTree tree) {
-		ForStatement $ = ast.newForStatement();
-		$.setBody((Statement) transform(tree.body));
-		if(notNullStatement(tree.condition))
-			$.setExpression((Expression) transform(tree.condition));
-		if(notNullStatement(tree.initializer))
-			$.initializers().add(transform(tree.initializer));
-		if( notNullStatement(tree.increment))
-			$.updaters().add(transform(tree.increment));
-		return $;
-	}
-
-	/**
-	 * @param asThisExpression
-	 * @return
-	 */
-	private ASTNode processThisExpression(ThisExpressionTree tree) {
-		return ast.newThisExpression(); 
-	}
-
-	/**
-	 * @param asDebuggerStatement
-	 * @return
-	 */
-	private ASTNode processDebuggerStatement(DebuggerStatementTree tree) {
-		return ast.newDebuggerStatement();
-	}
-
-	/**
-	 * @param asExpressionStatement
-	 * @return
-	 */
-	private ASTNode processExpressionStatement(ExpressionStatementTree tree ) {
-		ExpressionStatement $ = ast.newExpressionStatement();
-		Expression e = (Expression) transform(tree.expression);
-		if( e != null )
-			$.setExpression(e);
-		return $;
-	}
-
-	/**
-	 * @param asEmptyStatement
-	 * @return
-	 */
-	private ASTNode processEmptyStatement(EmptyStatementTree tree) {
-		return ast.newEmptyStatement();
-	}
-
-	/**
-	 * @param asDoWhileStatement
-	 * @return
-	 */
-	private ASTNode processDoLoop(DoWhileStatementTree tree) {
-		DoStatement $ = ast.newDoStatement();
-		$.setExpression((Expression) transform(tree.condition));
-		$.setBody((Statement) transform(tree.body));
-		return $;
-	}
-
-	/**
-	 * @param asContinueStatement
-	 * @return
-	 */
-	private ASTNode processContinueStatement(ContinueStatementTree tree) {
-		ContinueStatement $ = ast.newContinueStatement();
-		$.setLabel(transformLabelName(tree.name));
-		return $;
-	}
-
-	/**
-	 * @param asCatch
-	 * @return
-	 */
-	private ASTNode processCatchClause(CatchTree tree) {
-		CatchClause $ = ast.newCatchClause();
-		$.setException((SingleVariableDeclaration) transform(tree.exception));
-		$.setBody((Block) transform(tree.catchBody));
+	private ASTNode processSwitchDefault(DefaultClauseTree tree) {
+		// statements of DefaultClauseTree are handled on processSwitchStatement()
+		SwitchCase $ = ast.newSwitchCase();
 		return $;
 	}
 
@@ -1173,103 +1148,6 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asDefaultClause
-	 * @return
-	 */
-	private ASTNode processSwitchDefault(DefaultClauseTree tree) {
-		// statements of DefaultClauseTree are handled on processSwitchStatement()
-		SwitchCase $ = ast.newSwitchCase();
-		return $;
-	}
-
-	/**
-	 * @param asCaseClause
-	 * @return
-	 */
-	private ASTNode processSwitchCase(CaseClauseTree tree) {
-		// statements of CaseClauseTree are handled on processSwitchStatement()
-		SwitchCase $ = ast.newSwitchCase();
-		$.setExpression((Expression) transform(tree.expression));
-		return $;
-	}
-
-	/**
-	 * @param asCallExpression
-	 * @return
-	 */
-	private ASTNode processFunctionCall(CallExpressionTree tree) {
-		FunctionInvocation $  = ast.newFunctionInvocation();
-		ASTNode expr = transform(tree.operand);
-		if(expr.getNodeType() == ASTNode.SIMPLE_NAME){
-			$.setName((SimpleName) expr);
-		}else{
-			$.setExpression((Expression) expr);
-		}
-		
-		for (ParseTree pt : tree.arguments.arguments) {
-			$.arguments().add(transform(pt));
-		}
-		return $;
-	}
-
-	/**
-	 * @param asBreakStatement
-	 * @return
-	 */
-	private ASTNode processBreakStatement(BreakStatementTree tree) {
-		BreakStatement $ = ast.newBreakStatement();
-		$.setLabel((SimpleName) transformLabelName(tree.name));
-		return $;
-	}
-	
-   private SimpleName transformLabelName(IdentifierToken token) {
-    	SimpleName $ = ast.newSimpleName(token.value);
-        setSourceRange($, token);
-        return $;
-      }
-
-	/**
-	 * @param asBlock
-	 * @return
-	 */
-	private ASTNode processBlock(BlockTree tree) {
-		Block $ = ast.newBlock();
-		for (ParseTree pt : tree.statements) {
-			$.statements().add(transform(pt));
-		}
-		return $;
-	}
-
-	/**
-	 * @param asUnaryExpression
-	 * @return
-	 */
-	private ASTNode processUnaryExpression(UnaryExpressionTree tree) {
-		PrefixExpression $ = ast.newPrefixExpression();
-		$.setOperator(PrefixExpression.Operator.toOperator(tree.operator.toString()));
-		$.setOperand((Expression) transform(tree.operand));
-		return $;
-	}
-
-	/**
-	 * @param asTemplateSubstitution
-	 * @return
-	 */
-	private ASTNode processTemplateSubstitution(TemplateSubstitutionTree tree) {
-		return transform(tree.expression);
-	}
-
-	/**
-	 * @param asTemplateLiteralPortion
-	 * @return
-	 */
-	private ASTNode processTemplateLiteralPortion(TemplateLiteralPortionTree tree) {
-		TemplateElement $ = ast.newTemplateElement();
-		$.setStructuralProperty(TemplateElement.RAW_VALUE_PROPERTY, tree.value.asLiteral().value);
-		return $;
-	}
-
-	/**
 	 * @param asTemplateLiteralExpression
 	 * @return
 	 */
@@ -1286,31 +1164,169 @@ public class DOMTransformer {
 	}
 
 	/**
-	 * @param asArrayLiteralExpression
+	 * @param asTemplateLiteralPortion
 	 * @return
 	 */
-	private ASTNode processArrayLiteral(ArrayLiteralExpressionTree tree) {
-		ArrayInitializer $ = ast.newArrayInitializer();
-		for ( ParseTree pe : tree.elements) {
-			if(notNullStatement(pe))
-				$.expressions().add(transform(pe));
+	private ASTNode processTemplateLiteralPortion(TemplateLiteralPortionTree tree) {
+		TemplateElement $ = ast.newTemplateElement();
+		$.setStructuralProperty(TemplateElement.RAW_VALUE_PROPERTY, tree.value.asLiteral().value);
+		return $;
+	}
+
+	/**
+	 * @param asTemplateSubstitution
+	 * @return
+	 */
+	private ASTNode processTemplateSubstitution(TemplateSubstitutionTree tree) {
+		return transform(tree.expression);
+	}
+
+	/**
+	 * @param asThisExpression
+	 * @return
+	 */
+	private ASTNode processThisExpression(ThisExpressionTree tree) {
+		return ast.newThisExpression(); 
+	}
+
+	/**
+	 * @param asThrowStatement
+	 * @return
+	 */
+	private ASTNode processThrowStatement(ThrowStatementTree tree) {
+		ThrowStatement $ = ast.newThrowStatement();
+		$.setExpression((Expression) transform(tree.value));
+		return $;	
+	}
+
+	/**
+	 * @param asTryStatement
+	 * @return
+	 */
+	private ASTNode processTryStatement(TryStatementTree tree) {
+		TryStatement $ = ast.newTryStatement();
+		$.setBody((Block) transform(tree.body));
+		if(tree.catchBlock != null ){
+			$.catchClauses().add(transform(tree.catchBlock));
+		}
+		if(tree.finallyBlock != null ){
+			$.setFinally((Block) transform(tree.finallyBlock));
 		}
 		return $;
 	}
 
-	public ASTNode transform(ParseTree tree) {
-    	//TODO: JSDoc
-//        JSDocInfo info = handleJsDoc(tree);
-        ASTNode node = process(tree);
-        if (node == null ) return null;
-//        if (info != null) {
-//          node = maybeInjectCastNode(tree, info, node);
-//          node.setJSDocInfo(info);
-//        }
+	/**
+	 * @param asTypeName
+	 * @return
+	 */
+	private ASTNode processTypeName(TypeNameTree tree) {
+		Name $ = null;
+		Iterator<String> segmentsIt = tree.segments.iterator();
+		while(segmentsIt.hasNext()){
+			SimpleName n = ast.newSimpleName(segmentsIt.next());
+			if($ == null ){
+				$ = n;
+			}else{
+				$ = ast.newQualifiedName($,n);
+			}
+		}
+		return $;
+	}
 
-        setSourceRange(node, tree);
-        return node;
-      }
+	/**
+	 * @param asUnaryExpression
+	 * @return
+	 */
+	private ASTNode processUnaryExpression(UnaryExpressionTree tree) {
+		PrefixExpression $ = ast.newPrefixExpression();
+		$.setOperator(PrefixExpression.Operator.toOperator(tree.operator.toString()));
+		$.setOperand((Expression) transform(tree.operand));
+		return $;
+	}
+
+	/**
+	 * @param asVariableDeclaration
+	 * @return
+	 */
+	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
+		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
+		//TODO: Handle destructuring assignment
+		$.setName((SimpleName) transform(tree.lvalue));
+		if(tree.initializer != null){
+			$.setInitializer((Expression) transform(tree.initializer));
+		}
+		return $;
+	}
+
+	/**
+	 * @param asVariableDeclarationList
+	 * @return
+	 */
+	private ASTNode processVariableDeclarationList(VariableDeclarationListTree tree) {
+		// Only trees with single elements are handled here
+		// multiple elements should be handled on their caller 
+		// process* methods
+		Assert.isTrue(tree.declarations.size() == 1);
+		return ast.newVariableDeclarationExpression(transform(tree.declarations.get(0)));
+	}
+
+	/**
+	 * @param asVariableStatement
+	 * @return
+	 */
+	private ASTNode processVariableStatement(VariableStatementTree tree) {
+		VariableDeclarationStatement $ = ast.newVariableDeclarationStatement();
+		switch (tree.declarations.declarationType) {
+			case CONST :
+				$.setKind(VariableKind.CONST);
+				break;
+			case LET: 
+				$.setKind(VariableKind.LET);
+				break;
+			default :
+				$.setKind(VariableKind.VAR);
+				break;
+		}
+		for(ParseTree decl : tree.declarations.declarations){
+			$.fragments().add(transform(decl));
+		}
+		return $;
+	}
+	
+   /**
+ * @param asWhileStatement
+ * @return
+ */
+private ASTNode processWhileLoop(WhileStatementTree tree) {
+	WhileStatement $ = ast.newWhileStatement();
+	$.setExpression((Expression) transform(tree.condition));
+	$.setBody((Statement) transform(tree.body));
+	return $;
+}
+
+	/**
+	 * @param asWithStatement
+	 * @return
+	 */
+	private ASTNode processWithStatement(WithStatementTree tree) {
+		WithStatement $ = ast.newWithStatement();
+		$.setBody((Statement) transform(tree.body));
+		$.setExpression((Expression) transform(tree.expression));
+		return $;
+	}
+
+	/**
+	 * @param asYieldStatement
+	 * @return
+	 */
+	private ASTNode processYield(YieldExpressionTree tree) {
+		YieldExpression $ = ast.newYieldExpression();
+		$.setDelegate(Boolean.valueOf(tree.isYieldFor));
+		if(tree.expression != null ){
+			$.setArgument((Expression) transform(tree.expression));
+		}
+		return $;
+	}
 
 	/**
 	 * @param node
@@ -1319,7 +1335,7 @@ public class DOMTransformer {
 	private void setSourceRange(ASTNode node, ParseTree tree) {
 		node.setSourceRange(tree.location.start.offset, tree.location.end.offset - tree.location.start.offset);
 	}
-	
+
 	/**
 	 * @param node
 	 * @param tree
@@ -1328,24 +1344,68 @@ public class DOMTransformer {
 		node.setSourceRange(token.location.start.offset, token.location.end.offset - token.location.start.offset);
 	}
 
-	/**
-	 * @param asBinaryOperator
-	 * @return
-	 */
-	private ASTNode processBinaryExpression(BinaryOperatorTree tree) {
-		InfixExpression $ = ast.newInfixExpression();
-		$.setLeftOperand((Expression) transform(tree.left));
-		$.setRightOperand((Expression) transform(tree.right));
-		$.setOperator(convertBinaryOperator(tree.operator));
+	private FunctionExpression transformAsFunctionExpression(ParseTree tree){
+		FunctionExpression $ = ast.newFunctionExpression();
+		$.setMethod((FunctionDeclaration) transform(tree));
+		setSourceRange($,tree);
+		return $;
+	}
+
+	private ASTNode transformBooleanLiteral(Token token) {
+		BooleanLiteral $ = ast.newBooleanLiteral(token.type == TokenType.TRUE);
+		setSourceRange($,token);
+		return $;
+	}
+
+	private SimpleName transformLabelName(IdentifierToken token) {
+	    	SimpleName $ = ast.newSimpleName(token.value);
+	        setSourceRange($, token);
+	        return $;
+	      }
+
+	private ASTNode transformNullLiteral(Token token) {
+		NullLiteral $ = ast.newNullLiteral();
+		setSourceRange($,token);
 		return $;
 	}
 	
-	private InfixExpression.Operator convertBinaryOperator(Token operator) {
-		return InfixExpression.Operator.toOperator(operator.toString());
+	private ASTNode transformNumberLiteral(Token token) {
+        NumberLiteral $ = ast.newNumberLiteral(token.asLiteral().value);
+        setSourceRange($, token);
+        return $;
+      }
+
+	private SimpleName transformObjectLitKeyAsString(com.google.javascript.jscomp.parsing.parser.Token token) {
+		SimpleName $ = null;
+		if (token == null) {
+			$ = ast.newSimpleName("");
+		}
+		else if (token.type == TokenType.IDENTIFIER) {
+			$ = transformLabelName(token.asIdentifier());
+		}
+		else {// literal or number
+			$ = ast.newSimpleName(token.asLiteral().value);
+		}
+		return $;
 	}
 	
-	private boolean notNullStatement(ParseTree tree){
-		return tree.type != ParseTreeType.NULL;
+	private ASTNode transformRegExpLiteral(Token token) {
+		RegularExpressionLiteral $ = ast.newRegularExpressionLiteral(token.asLiteral().value);
+		setSourceRange($,token);
+		return $;
+	}
+	
+	private StringLiteral transformStringLiteral(Token token) {
+		StringLiteral $ = ast.newStringLiteral(token.asLiteral().value);
+		setSourceRange($,token);
+		return $;
+	}
+	
+	private SingleVariableDeclaration convertToSingleVariableDeclaration(Name name){
+		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
+		$.setPattern(name);
+		$.setSourceRange(name.getStartPosition(), name.getLength());
+		return $;
 	}
 	
 }

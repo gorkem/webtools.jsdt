@@ -494,9 +494,7 @@ public class DOMASTConverter extends EStreeVisitor{
 				break;
 			case FOR_IN_STATEMENT:
 				ForInStatement fis = (ForInStatement)parent;
-				if("left".equals(key)) //$NON-NLS-1$
-					fis.setIterationVariable((Statement) statement);
-				else if("body".equals(key)) //$NON-NLS-1$
+				if("body".equals(key)) //$NON-NLS-1$
 					fis.setBody((Statement) statement);
 				break;
 			case FOR_OF_STATEMENT:
@@ -751,7 +749,7 @@ public class DOMASTConverter extends EStreeVisitor{
 			case FOR_IN_STATEMENT:
 				ForInStatement fis = (ForInStatement)parent;
 				if("left".equals(key)) //$NON-NLS-1$
-					fis.setIterationVariable(ast.newExpressionStatement(expression));
+					fis.setIterationVariable(expression);
 				else if("right".equals(key)) //$NON-NLS-1$
 					fis.setCollection(expression);
 				break;
