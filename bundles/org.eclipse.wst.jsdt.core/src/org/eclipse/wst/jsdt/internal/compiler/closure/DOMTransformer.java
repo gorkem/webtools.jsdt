@@ -76,7 +76,6 @@ import org.eclipse.wst.jsdt.core.dom.ThrowStatement;
 import org.eclipse.wst.jsdt.core.dom.TryStatement;
 import org.eclipse.wst.jsdt.core.dom.Type;
 import org.eclipse.wst.jsdt.core.dom.TypeDeclaration;
-import org.eclipse.wst.jsdt.core.dom.VariableDeclarationExpression;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.wst.jsdt.core.dom.VariableKind;
@@ -262,10 +261,13 @@ public class DOMTransformer {
           return (T) processNewExpression(node.asNewExpression());
         case OBJECT_LITERAL_EXPRESSION:
           return (T) processObjectLiteral(node.asObjectLiteralExpression());
-        case COMPUTED_PROPERTY_DEFINITION:
-        case COMPUTED_PROPERTY_SETTER:
         case COMPUTED_PROPERTY_GETTER:
+          return (T) processComputedPropertyGetter(node.asComputedPropertyGetter());
+        case COMPUTED_PROPERTY_SETTER:
+           return (T) processComputedPropertySetter(node.asComputedPropertySetter());
         case COMPUTED_PROPERTY_METHOD:
+           return (T) processComputedPropertyMethod(node.asComputedPropertyMethod());
+        case COMPUTED_PROPERTY_DEFINITION:
         case COMPUTED_PROPERTY_MEMBER_VARIABLE:
         	// Handled on processObjectLiteral should never happen here
         	Assert.isTrue(false);
@@ -401,6 +403,50 @@ public class DOMTransformer {
       }
       return (T) processIllegalToken(node);
     }
+
+	/**
+	 * @param asComputedPropertyMethod
+	 * @return
+	 */
+	private ASTNode processComputedPropertyMethod(ComputedPropertyMethodTree tree) {
+		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		$.setBody(transform(tree.method.asFunctionDeclaration().functionBody));
+		$.setMethodName(transform(tree.property));
+		if(tree.method.asFunctionDeclaration().isStatic){
+			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		}
+		return $;
+	}
+
+	/**
+	 * @param asComputedPropertySetter
+	 * @return
+	 */
+	private ASTNode processComputedPropertySetter(ComputedPropertySetterTree tree) {
+		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		$.setBody(transform(tree.body));
+		$.setMethodName(transform(tree.property));
+		$.modifiers().add(ast.newModifier(ModifierKeyword.SET_KEYWORD));
+		if(tree.isStatic){
+			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		}
+		return $;
+	}
+
+	/**
+	 * @param asComputedPropertyGetter
+	 * @return
+	 */
+	private ASTNode processComputedPropertyGetter(ComputedPropertyGetterTree tree) {
+		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		$.setBody(transform(tree.body));
+		$.setMethodName(transform(tree.property));
+		$.modifiers().add(ast.newModifier(ModifierKeyword.GET_KEYWORD));
+		if(tree.isStatic){
+			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		}
+		return $;
+	}
 
 	/**
 	 * @param asArrayLiteralExpression
@@ -630,7 +676,11 @@ public class DOMTransformer {
 				}
 				$.setDeclaration(statement);
 			}else{
-				$.setDeclaration((ProgramElement) transform(tree.declaration));
+				ASTNode decl = transform(tree.declaration);
+				if(decl instanceof Expression){
+					decl = ast.newExpressionStatement((Expression) decl);
+				}
+				$.setDeclaration((ProgramElement) decl);
 			}
 		}
 		if (tree.exportSpecifierList != null) {
@@ -723,13 +773,30 @@ public class DOMTransformer {
 		
 		if(tree.kind == FunctionDeclarationTree.Kind.ARROW){
 			ArrowFunctionExpression $ = ast.newArrowFunctionExpression();
-			$.setBody((Block) transform(tree.functionBody));
-			for(ParseTree param : tree.formalParameterList.parameters){
-				$.parameters().add(transform(param));
+			if (tree.functionBody != null) {
+				ASTNode node = transform(tree.functionBody);
+				if(node != null ){
+					if (node.getNodeType() == ASTNode.BLOCK) {
+						$.setBody((Block) node);
+					}
+					else {
+						$.setExpression((Expression) node);
+					}
+				}
+			}
+			if(tree.formalParameterList != null ){ 
+				for(ParseTree param : tree.formalParameterList.parameters){
+					ASTNode aParam = transform(param);
+					if(aParam.getNodeType() == ASTNode.SINGLE_VARIABLE_DECLARATION){
+						$.parameters().add(aParam);
+					}else{
+						$.parameters().add(convertToSingleVariableDeclaration((Name) aParam));
+						
+					}
+				}
 			}
 			return (T) $;
 		}
-		//TODO: Kind.Member
 		
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		$.setGenerator(tree.isGenerator);
@@ -745,8 +812,33 @@ public class DOMTransformer {
 		if(tree.returnType != null ){
 			$.setReturnType2((Type) transform(tree.returnType));
 		}
-		// Kind.Expression
-		if(tree.kind == Kind.EXPRESSION) {
+		
+		if(tree.access != null){
+			ModifierKeyword modifierKeyword = null;
+			switch (tree.access) {
+				case PUBLIC:
+					modifierKeyword = ModifierKeyword.PUBLIC_KEYWORD;
+					break;
+				case PROTECTED:
+					modifierKeyword = ModifierKeyword.PROTECTED_KEYWORD;
+					break;
+				case PRIVATE:
+					modifierKeyword = ModifierKeyword.PRIVATE_KEYWORD;
+					break;
+				default :
+					throw new IllegalStateException("Unexpected access modifier type");
+			}
+			if(modifierKeyword != null){
+				$.modifiers().add(ast.newModifier(modifierKeyword));
+			}
+		}
+		
+		// Kind.Expression or MEMBER
+		if(tree.kind == Kind.MEMBER){
+			return (T) $;
+		}
+		
+		if(tree.kind == Kind.EXPRESSION ) {
 			FunctionExpression e = ast.newFunctionExpression();
 			e.setMethod($);
 			return (T) e;
@@ -974,11 +1066,18 @@ public class DOMTransformer {
 					f.setFieldName((Expression) transform(compMethod.property));
 					f.setInitializer(transformAsFunctionExpression(compMethod));
 					break;
+				case FUNCTION_DECLARATION:
+					f.setKind(FieldKind.INIT);
+					final FunctionDeclarationTree functionDeclaration = elem.asFunctionDeclaration();
+					f.setFieldName(transformObjectLitKeyAsString(functionDeclaration.name));
+					f.setInitializer(transform(functionDeclaration));
+					break;
 				default :
 					f.setKind(FieldKind.INIT);
 					final PropertyNameAssignmentTree assignment = elem.asPropertyNameAssignment();
 					f.setFieldName(transformObjectLitKeyAsString(assignment.name));
-					f.setInitializer((Expression) transform(assignment.value));
+					if(assignment.value !=null)
+						f.setInitializer((Expression) transform(assignment.value));
 					break;
 			}
 			$.fields().add(f);
@@ -1048,7 +1147,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processRestParameter(RestParameterTree tree) {
 		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
-		$.setName(transformLabelName(tree.identifier.asIdentifier()));
+		if(tree.identifier != null){
+			$.setName(transformLabelName(tree.identifier.asIdentifier()));
+		}
 		$.setVarargs(true);
 		return $;
 	}
@@ -1070,6 +1171,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processSetAccessor(SetAccessorTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		$.modifiers().add(ast.newModifier(ModifierKeyword.SET_KEYWORD));
 		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
 		$.setBody((Block) transform(tree.body));
 		final SingleVariableDeclaration p = ast.newSingleVariableDeclaration();
@@ -1251,7 +1353,7 @@ public class DOMTransformer {
 	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
 		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
 		//TODO: Handle destructuring assignment
-		$.setName((SimpleName) transform(tree.lvalue));
+		$.setPattern((Name) transform(tree.lvalue));
 		if(tree.initializer != null){
 			$.setInitializer((Expression) transform(tree.initializer));
 		}

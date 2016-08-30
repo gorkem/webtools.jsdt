@@ -23,6 +23,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.List;
+import java.util.Scanner;
 
 import org.eclipse.wst.jsdt.core.dom.ASTNode;
 import org.eclipse.wst.jsdt.core.dom.ExpressionStatement;
@@ -32,6 +33,15 @@ import org.eclipse.wst.jsdt.core.dom.TemplateElement;
 import org.eclipse.wst.jsdt.core.dom.TemplateLiteral;
 import org.eclipse.wst.jsdt.internal.compiler.closure.ClosureCompiler;
 import org.junit.Test;
+
+import com.google.javascript.jscomp.parsing.Config.LanguageMode;
+import com.google.javascript.jscomp.parsing.ParserRunner;
+import com.google.javascript.jscomp.parsing.parser.SourceFile;
+import com.google.javascript.jscomp.parsing.parser.Parser.Config;
+import com.google.javascript.jscomp.parsing.parser.Parser.Config.Mode;
+import com.google.javascript.jscomp.parsing.parser.util.ErrorReporter;
+import com.google.javascript.jscomp.parsing.parser.util.SourcePosition;
+import com.google.javascript.rhino.SimpleSourceFile;
 
 @SuppressWarnings("nls")
 public class ClosureCompilerTests {
@@ -107,6 +117,39 @@ public class ClosureCompilerTests {
 	public void testEverythingJS_es2015_module(){
 		testEverythingJs("es2015-module.js");
 	}
+	
+	@Test
+	public void testParserRunner(){
+		class TestErrorReporter implements com.google.javascript.rhino.ErrorReporter {
+
+			private void report(String message, String name, int line, int column) {
+				System.out.println(message + " at " + name + " line: " + line + ":" + column);  //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
+			}
+
+			/* (non-Javadoc)
+			 * @see com.google.javascript.rhino.ErrorReporter#warning(java.lang.String, java.lang.String, int, int)
+			 */
+			@Override
+			public void warning(String message, String sourceName, int line, int lineOffset) {
+				this.report("WARNING: " + message, sourceName, line , lineOffset);
+			}
+
+			/* (non-Javadoc)
+			 * @see com.google.javascript.rhino.ErrorReporter#error(java.lang.String, java.lang.String, int, int)
+			 */
+			@Override
+			public void error(String message, String sourceName, int line, int lineOffset) {
+				this.report("ERROR: " + message, sourceName, line , lineOffset);
+				
+			}
+		}
+		
+		InputStream in = this.getClass().getResourceAsStream("es5.js");
+		String content = readFile(in);
+		com.google.javascript.jscomp.parsing.Config config = ParserRunner.createConfig(true, LanguageMode.ECMASCRIPT6,null);
+		SimpleSourceFile sf = new SimpleSourceFile("es2015-script.js", false );
+		ParserRunner.parse(sf,content,config, new TestErrorReporter() );
+	}
 
 	private JavaScriptUnit parse( String content){
 	
@@ -121,27 +164,10 @@ public class ClosureCompilerTests {
 	}
 
 	private String readFile(InputStream input){
-		BufferedReader br = null;
-		StringBuilder sb = new StringBuilder();
-		String line;
-		try {
-			br = new BufferedReader(new InputStreamReader(input,Charset.forName("UTF-8")));
-			while ((line = br.readLine()) != null) {
-				sb.append(line);
-				sb.append("\n");
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		} finally {
-			if (br != null) {
-				try {
-					br.close();
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
+		try(Scanner s = new Scanner(input)){
+			s.useDelimiter("\\A");
+			return s.next();			
 		}
-		return sb.toString();
 	}
 
 

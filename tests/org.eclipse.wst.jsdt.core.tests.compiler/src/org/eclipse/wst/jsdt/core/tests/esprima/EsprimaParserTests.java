@@ -91,6 +91,7 @@ import org.eclipse.wst.jsdt.core.dom.VariableKind;
 import org.eclipse.wst.jsdt.core.dom.WhileStatement;
 import org.eclipse.wst.jsdt.core.dom.WithStatement;
 import org.eclipse.wst.jsdt.core.dom.YieldExpression;
+import org.eclipse.wst.jsdt.internal.compiler.closure.ClosureCompiler;
 import org.eclipse.wst.jsdt.internal.esprima.EsprimaParser;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -102,7 +103,7 @@ public class EsprimaParserTests {
 
 	@Test
 	public void createParserInstance(){
-		EsprimaParser parser = EsprimaParser.newParser();
+		ClosureCompiler parser = ClosureCompiler.newInstance();
 		assertNotNull(parser);
 	}
 
@@ -808,8 +809,8 @@ public class EsprimaParserTests {
 			if(astNode.getNodeType() == ASTNode.FOR_IN_STATEMENT){
 				ForInStatement fs = (ForInStatement)astNode;
 				assertTrue(fs.getBody() instanceof Block);
-				assertTrue(fs.getIterationVariable() instanceof VariableDeclarationStatement );
-				VariableDeclarationStatement vde = (VariableDeclarationStatement) fs.getIterationVariable();
+				assertTrue(fs.getIterationVariable() instanceof VariableDeclarationExpression );
+				VariableDeclarationExpression vde = (VariableDeclarationExpression) fs.getIterationVariable();
 				assertEquals(VariableKind.LET, vde.getKind());
 				assertTrue(fs.getCollection()instanceof SimpleName);
 				SimpleName sn = (SimpleName)fs.getCollection();
@@ -828,7 +829,7 @@ public class EsprimaParserTests {
 		for (ASTNode astNode : statements) {
 			if(astNode.getNodeType() == ASTNode.FOR_IN_STATEMENT){
 				ForInStatement fs = (ForInStatement)astNode;
-				assertTrue(fs.getIterationVariable() instanceof ExpressionStatement );
+				assertTrue(fs.getIterationVariable() instanceof Expression );
 				return;
 			}
 		}
@@ -1442,9 +1443,9 @@ public class EsprimaParserTests {
 		assertFalse(unit.statements().isEmpty());
 		ForInStatement forin = (ForInStatement) unit.statements().get(0);
 		assertEquals( ASTNode.EXPRESSION_STATEMENT, forin.getIterationVariable().getNodeType());
-		ExpressionStatement es = (ExpressionStatement) forin.getIterationVariable();
-		assertEquals(ASTNode.ARRAY_NAME, es.getExpression().getNodeType());
-		ArrayName name  = (ArrayName)es.getExpression();
+		Expression es = forin.getIterationVariable();
+		assertEquals(ASTNode.ARRAY_NAME, es.getNodeType());
+		ArrayName name  = (ArrayName)es;
 		assertEquals(3, name.elements().size());
 	}
 
@@ -1493,12 +1494,12 @@ public class EsprimaParserTests {
 	}
 
 	private JavaScriptUnit parse(String content){
-		return EsprimaParser.newParser().includeComments().setSource(content).parse();
+		return ClosureCompiler.newInstance().setSource(content).parse();
 	}
 
 	private void testEverythingJs(String file){
 		InputStream in = this.getClass().getResourceAsStream(file);
-		JavaScriptUnit unit = EsprimaParser.newParser().setSource(readFile(in)).parse();
+		JavaScriptUnit unit = ClosureCompiler.newInstance().setSource(readFile(in)).parse();
 		assertNotNull(unit);
 		assertFalse(unit.statements().isEmpty());
 	}
