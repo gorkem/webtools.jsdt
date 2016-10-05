@@ -12,6 +12,7 @@
 package org.eclipse.wst.jsdt.internal.compiler.closure;
 
 import java.util.Iterator;
+import java.util.List;
 
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.wst.jsdt.core.dom.AST;
@@ -23,9 +24,12 @@ import org.eclipse.wst.jsdt.core.dom.ArrowFunctionExpression;
 import org.eclipse.wst.jsdt.core.dom.Assignment;
 import org.eclipse.wst.jsdt.core.dom.Assignment.Operator;
 import org.eclipse.wst.jsdt.core.dom.Block;
+import org.eclipse.wst.jsdt.core.dom.BodyDeclaration;
 import org.eclipse.wst.jsdt.core.dom.BooleanLiteral;
 import org.eclipse.wst.jsdt.core.dom.BreakStatement;
 import org.eclipse.wst.jsdt.core.dom.CatchClause;
+import org.eclipse.wst.jsdt.core.dom.ChildListPropertyDescriptor;
+import org.eclipse.wst.jsdt.core.dom.ChildPropertyDescriptor;
 import org.eclipse.wst.jsdt.core.dom.ClassInstanceCreation;
 import org.eclipse.wst.jsdt.core.dom.ConditionalExpression;
 import org.eclipse.wst.jsdt.core.dom.ContinueStatement;
@@ -34,7 +38,6 @@ import org.eclipse.wst.jsdt.core.dom.ExportDeclaration;
 import org.eclipse.wst.jsdt.core.dom.Expression;
 import org.eclipse.wst.jsdt.core.dom.ExpressionStatement;
 import org.eclipse.wst.jsdt.core.dom.FieldAccess;
-import org.eclipse.wst.jsdt.core.dom.FieldDeclaration;
 import org.eclipse.wst.jsdt.core.dom.ForInStatement;
 import org.eclipse.wst.jsdt.core.dom.ForOfStatement;
 import org.eclipse.wst.jsdt.core.dom.ForStatement;
@@ -44,6 +47,7 @@ import org.eclipse.wst.jsdt.core.dom.FunctionInvocation;
 import org.eclipse.wst.jsdt.core.dom.IfStatement;
 import org.eclipse.wst.jsdt.core.dom.ImportDeclaration;
 import org.eclipse.wst.jsdt.core.dom.InfixExpression;
+import org.eclipse.wst.jsdt.core.dom.JSdoc;
 import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
 import org.eclipse.wst.jsdt.core.dom.LabeledStatement;
 import org.eclipse.wst.jsdt.core.dom.ListExpression;
@@ -59,23 +63,24 @@ import org.eclipse.wst.jsdt.core.dom.ObjectName;
 import org.eclipse.wst.jsdt.core.dom.ParenthesizedExpression;
 import org.eclipse.wst.jsdt.core.dom.PostfixExpression;
 import org.eclipse.wst.jsdt.core.dom.PrefixExpression;
-import org.eclipse.wst.jsdt.core.dom.ProgramElement;
 import org.eclipse.wst.jsdt.core.dom.RegularExpressionLiteral;
 import org.eclipse.wst.jsdt.core.dom.RestElementName;
 import org.eclipse.wst.jsdt.core.dom.ReturnStatement;
 import org.eclipse.wst.jsdt.core.dom.SimpleName;
+import org.eclipse.wst.jsdt.core.dom.SimplePropertyDescriptor;
 import org.eclipse.wst.jsdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.wst.jsdt.core.dom.SpreadElement;
 import org.eclipse.wst.jsdt.core.dom.Statement;
 import org.eclipse.wst.jsdt.core.dom.StringLiteral;
+import org.eclipse.wst.jsdt.core.dom.StructuralPropertyDescriptor;
 import org.eclipse.wst.jsdt.core.dom.SwitchCase;
 import org.eclipse.wst.jsdt.core.dom.SwitchStatement;
 import org.eclipse.wst.jsdt.core.dom.TemplateElement;
 import org.eclipse.wst.jsdt.core.dom.TemplateLiteral;
 import org.eclipse.wst.jsdt.core.dom.ThrowStatement;
 import org.eclipse.wst.jsdt.core.dom.TryStatement;
-import org.eclipse.wst.jsdt.core.dom.Type;
 import org.eclipse.wst.jsdt.core.dom.TypeDeclaration;
+import org.eclipse.wst.jsdt.core.dom.VariableDeclarationExpression;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.wst.jsdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.wst.jsdt.core.dom.VariableKind;
@@ -97,6 +102,7 @@ import com.google.javascript.jscomp.parsing.parser.trees.CaseClauseTree;
 import com.google.javascript.jscomp.parsing.parser.trees.CatchTree;
 import com.google.javascript.jscomp.parsing.parser.trees.ClassDeclarationTree;
 import com.google.javascript.jscomp.parsing.parser.trees.CommaExpressionTree;
+import com.google.javascript.jscomp.parsing.parser.trees.Comment;
 import com.google.javascript.jscomp.parsing.parser.trees.ComputedPropertyDefinitionTree;
 import com.google.javascript.jscomp.parsing.parser.trees.ComputedPropertyGetterTree;
 import com.google.javascript.jscomp.parsing.parser.trees.ComputedPropertyMemberVariableTree;
@@ -116,7 +122,6 @@ import com.google.javascript.jscomp.parsing.parser.trees.ForInStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.ForOfStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.ForStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.FunctionDeclarationTree;
-import com.google.javascript.jscomp.parsing.parser.trees.FunctionDeclarationTree.Kind;
 import com.google.javascript.jscomp.parsing.parser.trees.GetAccessorTree;
 import com.google.javascript.jscomp.parsing.parser.trees.IdentifierExpressionTree;
 import com.google.javascript.jscomp.parsing.parser.trees.IfStatementTree;
@@ -157,6 +162,7 @@ import com.google.javascript.jscomp.parsing.parser.trees.VariableStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.WhileStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.WithStatementTree;
 import com.google.javascript.jscomp.parsing.parser.trees.YieldExpressionTree;
+import com.google.javascript.jscomp.parsing.parser.util.SourceRange;
 
 /**
  * @author Gorkem Ercan
@@ -165,181 +171,222 @@ import com.google.javascript.jscomp.parsing.parser.trees.YieldExpressionTree;
 @SuppressWarnings("unchecked")
 public class DOMTransformer {
 
+	/**
+	 * 
+	 */
+	private static final String SUPER = "super"; //$NON-NLS-1$
 	private final AST ast;
-	
-	public DOMTransformer(AST t){
+	private final List<Comment> comments;
+	private Comment currentComment;
+	private final Iterator<Comment> nextCommentIter;
+
+	public DOMTransformer(AST t, List<Comment> comment){
 		this.ast = t;
+		this.comments = comment;
+	    this.nextCommentIter = comments.iterator();
+		this.currentComment = nextCommentIter.hasNext() ? nextCommentIter.next() : null;
+		
 	}
 
-    public <T extends ASTNode> T transform(ParseTree tree) {
+    public ASTNode transform(StructuralPropertyDescriptor property, ParseTree tree) {
     	if(tree == null )
     		return null;
-    	//TODO: JSDoc
-//        JSDocInfo info = handleJsDoc(tree);
-        T node = process(tree);
-        if (node == null ) return null;
-//        if (info != null) {
-//          node = maybeInjectCastNode(tree, info, node);
-//          node.setJSDocInfo(info);
-//        }
-
+        ASTNode node = process(property, tree);
+        if (node == null ) 
+        	return null;
         setSourceRange(node, tree);
         return node;
       }
+
+	/**
+	 * @param tree
+	 * @param node
+	 */
+	private <T extends ASTNode> void attachJSDoc(ParseTree tree, BodyDeclaration node) {
+		Comment info = handleJsDoc(tree);
+        if (info != null && info.isJsDoc()) {
+        	JSdoc doc = ast.newJSdoc();
+        	doc.setComment(info.value);
+        	doc.setSourceRange(info.location.start.offset, info.location.end.offset - info.location.start.offset);
+        	node.setJavadoc(doc);
+        }
+	}
+	
+	/**
+	 * @param tree
+	 * @param node
+	 */
+	private <T extends ASTNode> void attachJSDoc(ParseTree tree, VariableDeclarationStatement node) {
+		Comment info = handleJsDoc(tree);
+        if (info != null && info.isJsDoc()) {
+        	JSdoc doc = ast.newJSdoc();
+        	doc.setComment(info.value);
+        	doc.setSourceRange(info.location.start.offset, info.location.end.offset - info.location.start.offset);
+        	node.setJavadoc(doc);
+        }
+	}
    
     private InfixExpression.Operator convertBinaryOperator(Token operator) {
 		return InfixExpression.Operator.toOperator(operator.toString());
 	}
+    
+    private VariableKind convertVariableKind(TokenType token){
+    	switch(token){
+    		case LET   : return VariableKind.LET;
+    		case CONST : return VariableKind.CONST;
+    		// Returns VAR by default
+    		default: return VariableKind.VAR;
+    	}
+    }
 
 	private boolean notNullStatement(ParseTree tree){
 		return tree.type != ParseTreeType.NULL;
 	}
-    
 
-
-	private <T extends ASTNode> T process(ParseTree node) {
+	private ASTNode process(StructuralPropertyDescriptor property, ParseTree node) {
       switch (node.type) {
         case BINARY_OPERATOR:
-          return (T) processBinaryExpression(node.asBinaryOperator());
+          return  processBinaryExpression(node.asBinaryOperator());
         case ARRAY_LITERAL_EXPRESSION:
-          return (T) processArrayLiteral(node.asArrayLiteralExpression());
+          return  processArrayLiteral(node.asArrayLiteralExpression());
         case TEMPLATE_LITERAL_EXPRESSION:
-          return (T) processTemplateLiteral(node.asTemplateLiteralExpression());
+          return  processTemplateLiteral(node.asTemplateLiteralExpression());
         case TEMPLATE_LITERAL_PORTION:
-          return (T) processTemplateLiteralPortion(node.asTemplateLiteralPortion());
+          return  processTemplateLiteralPortion(node.asTemplateLiteralPortion());
         case TEMPLATE_SUBSTITUTION:
-          return (T) processTemplateSubstitution(node.asTemplateSubstitution());
+          return  processTemplateSubstitution(node.asTemplateSubstitution());
         case UNARY_EXPRESSION:
-          return (T) processUnaryExpression(node.asUnaryExpression());
+          return  processUnaryExpression(node.asUnaryExpression());
         case BLOCK:
-          return (T) processBlock(node.asBlock());
+          return  processBlock(node.asBlock());
         case BREAK_STATEMENT:
-          return (T) processBreakStatement(node.asBreakStatement());
+          return  processBreakStatement(node.asBreakStatement());
         case CALL_EXPRESSION:
-          return (T) processFunctionCall(node.asCallExpression());
+          return  processFunctionCall(node.asCallExpression());
         case SWITCH_STATEMENT:
-        	return (T) processSwitchStatement(node.asSwitchStatement());
+        	return  processSwitchStatement(node.asSwitchStatement());
         case CASE_CLAUSE:
-          return (T) processSwitchCase(node.asCaseClause());
+          return  processSwitchCase(node.asCaseClause());
         case DEFAULT_CLAUSE:
-          return (T) processSwitchDefault(node.asDefaultClause());
+          return  processSwitchDefault(node.asDefaultClause());
         case CATCH:
-          return (T) processCatchClause(node.asCatch());
+          return  processCatchClause(node.asCatch());
         case CONTINUE_STATEMENT:
-          return (T) processContinueStatement(node.asContinueStatement());
+          return  processContinueStatement(node.asContinueStatement());
         case DO_WHILE_STATEMENT:
-          return (T) processDoLoop(node.asDoWhileStatement());
+          return  processDoLoop(node.asDoWhileStatement());
         case EMPTY_STATEMENT:
-          return (T) processEmptyStatement(node.asEmptyStatement());
+          return  processEmptyStatement(node.asEmptyStatement());
         case EXPRESSION_STATEMENT:
-          return (T) processExpressionStatement(node.asExpressionStatement());
+          return  processExpressionStatement(node.asExpressionStatement());
         case DEBUGGER_STATEMENT:
-          return (T) processDebuggerStatement(node.asDebuggerStatement());
+          return  processDebuggerStatement(node.asDebuggerStatement());
         case THIS_EXPRESSION:
-          return (T) processThisExpression(node.asThisExpression());
+          return processThisExpression(node.asThisExpression());
         case FOR_STATEMENT:
-          return (T) processForLoop(node.asForStatement());
+          return  processForLoop(node.asForStatement());
         case FOR_IN_STATEMENT:
-          return (T) processForInLoop(node.asForInStatement());
+          return  processForInLoop(node.asForInStatement());
         case FUNCTION_DECLARATION:
-          return (T) processFunction(node.asFunctionDeclaration());
+          return  processFunction(property, node.asFunctionDeclaration());
         case MEMBER_LOOKUP_EXPRESSION:
-          return (T) processElementGet(node.asMemberLookupExpression());
+          return  processElementGet(node.asMemberLookupExpression());
         case MEMBER_EXPRESSION:
-          return (T) processPropertyGet(node.asMemberExpression());
+          return  processPropertyGet(property, node.asMemberExpression());
         case CONDITIONAL_EXPRESSION:
-          return (T) processConditionalExpression(node.asConditionalExpression());
+          return  processConditionalExpression(node.asConditionalExpression());
         case IF_STATEMENT:
-          return (T) processIfStatement(node.asIfStatement());
+          return processIfStatement(node.asIfStatement());
         case LABELLED_STATEMENT:
-          return (T) processLabeledStatement(node.asLabelledStatement());
+          return processLabeledStatement(node.asLabelledStatement());
         case PAREN_EXPRESSION:
-          return (T) processParenthesizedExpression(node.asParenExpression());
+          return processParenthesizedExpression(node.asParenExpression());
         case IDENTIFIER_EXPRESSION:
-          return (T) processName(node.asIdentifierExpression());
+          return processName(property, node.asIdentifierExpression());
         case NEW_EXPRESSION:
-          return (T) processNewExpression(node.asNewExpression());
+          return processNewExpression(node.asNewExpression());
         case OBJECT_LITERAL_EXPRESSION:
-          return (T) processObjectLiteral(node.asObjectLiteralExpression());
+          return processObjectLiteral(node.asObjectLiteralExpression());
         case COMPUTED_PROPERTY_GETTER:
-          return (T) processComputedPropertyGetter(node.asComputedPropertyGetter());
+          return  processComputedPropertyGetter(node.asComputedPropertyGetter());
         case COMPUTED_PROPERTY_SETTER:
-           return (T) processComputedPropertySetter(node.asComputedPropertySetter());
+           return processComputedPropertySetter(node.asComputedPropertySetter());
         case COMPUTED_PROPERTY_METHOD:
-           return (T) processComputedPropertyMethod(node.asComputedPropertyMethod());
+           return processComputedPropertyMethod(node.asComputedPropertyMethod());
         case COMPUTED_PROPERTY_DEFINITION:
         case COMPUTED_PROPERTY_MEMBER_VARIABLE:
         	// Handled on processObjectLiteral should never happen here
         	Assert.isTrue(false);
+        	break;
         case RETURN_STATEMENT:
-          return (T) processReturnStatement(node.asReturnStatement());
+          return processReturnStatement(node.asReturnStatement());
         case POSTFIX_EXPRESSION:
-          return (T) processPostfixExpression(node.asPostfixExpression());
+          return processPostfixExpression(node.asPostfixExpression());
         case PROGRAM:
-          return (T) processAstRoot(node.asProgram());
+          return processAstRoot(node.asProgram());
         case LITERAL_EXPRESSION: // STRING, NUMBER, TRUE, FALSE, NULL, REGEXP
-          return (T) processLiteralExpression(node.asLiteralExpression());
+          return processLiteralExpression(node.asLiteralExpression());
         case THROW_STATEMENT:
-          return (T) processThrowStatement(node.asThrowStatement());
+          return processThrowStatement(node.asThrowStatement());
         case TRY_STATEMENT:
-          return (T) processTryStatement(node.asTryStatement());
+          return processTryStatement(node.asTryStatement());
         case VARIABLE_STATEMENT: // var const let
-          return (T) processVariableStatement(node.asVariableStatement());
+          return processVariableStatement(node.asVariableStatement());
         case VARIABLE_DECLARATION_LIST:
-          return (T) processVariableDeclarationList(node.asVariableDeclarationList());
+          return processVariableDeclarationList(node.asVariableDeclarationList());
         case VARIABLE_DECLARATION:
-          return (T) processVariableDeclaration(node.asVariableDeclaration());
+          return processVariableDeclaration(node.asVariableDeclaration());
         case WHILE_STATEMENT:
-          return (T) processWhileLoop(node.asWhileStatement());
+          return processWhileLoop(node.asWhileStatement());
         case WITH_STATEMENT:
-          return (T) processWithStatement(node.asWithStatement());
+          return processWithStatement(node.asWithStatement());
         case COMMA_EXPRESSION:
-          return (T) processCommaExpression(node.asCommaExpression());
+          return processCommaExpression(node.asCommaExpression());
         case NULL: // this is not the null literal
-          return (T) processNull(node.asNull());
+          return processNull(node.asNull());
         case FINALLY:
-          return transform(node.asFinally().block);
+          return transform(property, node.asFinally().block);
 
         case MISSING_PRIMARY_EXPRESSION:
         	// DOM AST provides a syntactically plausible initial value to required
         	// properties skip processing this node type.
         	return null;
         case PROPERTY_NAME_ASSIGNMENT:
-          return (T) processPropertyNameAssignment(node.asPropertyNameAssignment());
+          return processPropertyNameAssignment(node.asPropertyNameAssignment());
         case GET_ACCESSOR:
-          return (T) processGetAccessor(node.asGetAccessor());
+          return processGetAccessor(property, node.asGetAccessor());
         case SET_ACCESSOR:
-          return (T) processSetAccessor(node.asSetAccessor());
+          return processSetAccessor(property, node.asSetAccessor());
         case FORMAL_PARAMETER_LIST:
         	//Should be handled on processFunction
         	Assert.isTrue(false);
-
+        	break;
         case CLASS_DECLARATION:
-          return (T) processClassDeclaration(node.asClassDeclaration());
+          return processClassDeclaration(property, node.asClassDeclaration());
         case SUPER_EXPRESSION:
-          return (T) processSuper(node.asSuperExpression());
+          return processSuper(node.asSuperExpression());
         case YIELD_EXPRESSION:
-          return (T) processYield(node.asYieldStatement());
+          return processYield(node.asYieldStatement());
         case FOR_OF_STATEMENT:
-          return (T) processForOf(node.asForOfStatement());
+          return processForOf(node.asForOfStatement());
 
         case EXPORT_DECLARATION:
-          return (T) processExportDecl(node.asExportDeclaration());
+          return processExportDecl(node.asExportDeclaration());
         case EXPORT_SPECIFIER:
-          return (T) processExportSpec(node.asExportSpecifier());
+          return processExportSpec(node.asExportSpecifier());
         case IMPORT_DECLARATION:
-          return (T) processImportDecl(node.asImportDeclaration());
+          return processImportDecl(node.asImportDeclaration());
         case IMPORT_SPECIFIER:
-          return (T) processImportSpec(node.asImportSpecifier());
+          return processImportSpec(node.asImportSpecifier());
         case MODULE_IMPORT:
-          return (T) processModuleImport(node.asModuleImport());
+          return processModuleImport(node.asModuleImport());
 
         case ARRAY_PATTERN:
-          return (T) processArrayPattern(node.asArrayPattern());
+          return processArrayPattern(property,node.asArrayPattern());
         case OBJECT_PATTERN:
-          return (T) processObjectPattern(node.asObjectPattern());
+          return processObjectPattern(property,node.asObjectPattern());
         case ASSIGNMENT_REST_ELEMENT:
-          return (T) processAssignmentRestElement(node.asAssignmentRestElement());
+          return processAssignmentRestElement(node.asAssignmentRestElement());
 
 //        case COMPREHENSION:
 //          return processComprehension(node.asComprehension());
@@ -349,15 +396,15 @@ public class DOMTransformer {
 //          return processComprehensionIf(node.asComprehensionIf());
 
         case DEFAULT_PARAMETER:
-          return (T) processDefaultParameter(node.asDefaultParameter());
+          return processDefaultParameter(property, node.asDefaultParameter());
         case REST_PARAMETER:
-          return (T) processRestParameter(node.asRestParameter());
+          return processRestParameter(node.asRestParameter());
         case SPREAD_EXPRESSION:
-          return (T) processSpreadExpression(node.asSpreadExpression());
+          return processSpreadExpression(node.asSpreadExpression());
 
         // ES6 Typed
         case TYPE_NAME:
-          return (T) processTypeName(node.asTypeName());
+          return processTypeName(node.asTypeName());
 //        case TYPED_PARAMETER:
 //          return processTypedParameter(node.asTypedParameter());
 //        case OPTIONAL_PARAMETER:
@@ -395,13 +442,11 @@ public class DOMTransformer {
 //          return processIndexSignature(node.asIndexSignature());
 //        case CALL_SIGNATURE:
 //          return processCallSignature(node.asCallSignature());
-
-        // TODO(johnlenz): handle these or remove parser support
         case ARGUMENT_LIST:
         default:
           break;
       }
-      return (T) processIllegalToken(node);
+      return processIllegalToken(node);
     }
 
 	/**
@@ -410,9 +455,10 @@ public class DOMTransformer {
 	 */
 	private ASTNode processComputedPropertyMethod(ComputedPropertyMethodTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
-		$.setBody(transform(tree.method.asFunctionDeclaration().functionBody));
-		$.setMethodName(transform(tree.property));
-		if(tree.method.asFunctionDeclaration().isStatic){
+		FunctionDeclarationTree methodTree= tree.method.asFunctionDeclaration();
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY, methodTree.functionBody);
+		transformAndSetProperty($,FunctionDeclaration.METHOD_NAME_PROPERTY, tree.property);
+		if(methodTree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
 		return $;
@@ -424,8 +470,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processComputedPropertySetter(ComputedPropertySetterTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
-		$.setBody(transform(tree.body));
-		$.setMethodName(transform(tree.property));
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
+		transformAndSetProperty($,FunctionDeclaration.METHOD_NAME_PROPERTY,tree.property);
 		$.modifiers().add(ast.newModifier(ModifierKeyword.SET_KEYWORD));
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
@@ -439,8 +485,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processComputedPropertyGetter(ComputedPropertyGetterTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
-		$.setBody(transform(tree.body));
-		$.setMethodName(transform(tree.property));
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.property);
 		$.modifiers().add(ast.newModifier(ModifierKeyword.GET_KEYWORD));
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
@@ -456,7 +502,7 @@ public class DOMTransformer {
 		ArrayInitializer $ = ast.newArrayInitializer();
 		for ( ParseTree pe : tree.elements) {
 			if(notNullStatement(pe))
-				$.expressions().add(transform(pe));
+				$.expressions().add(transform(ArrayInitializer.EXPRESSIONS_PROPERTY,pe));
 		}
 		return $;
 	}
@@ -465,10 +511,17 @@ public class DOMTransformer {
 	 * @param asArrayPattern
 	 * @return
 	 */
-	private ASTNode processArrayPattern(ArrayPatternTree tree) {
+	private ASTNode processArrayPattern(StructuralPropertyDescriptor property, ArrayPatternTree tree) {
 		ArrayName $ = ast.newArrayName();
 		for(ParseTree child: tree.elements){
-			$.elements().add(transform(child));
+			if(notNullStatement(child))
+			$.elements().add(transform(ArrayName.ELEMENTS_PROPERTY,child));
+		}
+		Class<?> claz = classForProperty(property);
+		if(claz.isAssignableFrom(SingleVariableDeclaration.class)){
+			SingleVariableDeclaration svd = ast.newSingleVariableDeclaration();
+			svd.setPattern($);
+			return svd;
 		}
 		return $;
 	}
@@ -490,16 +543,15 @@ public class DOMTransformer {
 	private ASTNode processAstRoot(ProgramTree tree) {
 		JavaScriptUnit $ = ast.newJavaScriptUnit();
 	    for (ParseTree child : tree.sourceElements) {
-	    	ASTNode node =  transform(child);
-	    	switch (node.getNodeType()) {
-				case ASTNode.EXPORT_DECLARATION :
-					$.exports().add(node);
+	    	switch (child.type) {
+				case EXPORT_DECLARATION:
+					$.exports().add(transform(JavaScriptUnit.EXPORTS_PROPERTY,child));
 					break;
-				case ASTNode.IMPORT_DECLARATION : 
-					$.imports().add(node);
+				case IMPORT_DECLARATION : 
+					$.imports().add(transform(JavaScriptUnit.IMPORTS_PROPERTY,child));
 					break;
 				default :
-					$.statements().add(node);
+					$.statements().add(transform(JavaScriptUnit.STATEMENTS_PROPERTY,child));
 					break;
 			}
 	    }
@@ -514,15 +566,15 @@ public class DOMTransformer {
 		Operator assignOp = Assignment.Operator.toOperator(tree.operator.toString());
 		if(assignOp != null){
 			Assignment $ = ast.newAssignment();
-			$.setLeftHandSide((Expression) transform(tree.left));
-			$.setRightHandSide((Expression) transform(tree.right));
-			$.setOperator(assignOp);
+			safeSetProperty($, Assignment.OPERATOR_PROPERTY,assignOp);
+			transformAndSetProperty($,Assignment.LEFT_HAND_SIDE_PROPERTY,tree.left);
+			transformAndSetProperty($,Assignment.RIGHT_HAND_SIDE_PROPERTY,tree.right);
 			return $;
 		}
 		InfixExpression $ = ast.newInfixExpression();
-		$.setLeftOperand((Expression) transform(tree.left));
-		$.setRightOperand((Expression) transform(tree.right));
-		$.setOperator(convertBinaryOperator(tree.operator));
+		safeSetProperty($,InfixExpression.OPERATOR_PROPERTY,convertBinaryOperator(tree.operator));
+		transformAndSetProperty($,InfixExpression.LEFT_OPERAND_PROPERTY, tree.left);
+		transformAndSetProperty($,InfixExpression.RIGHT_OPERAND_PROPERTY, tree.right);
 		return $;
 	}
 
@@ -533,7 +585,8 @@ public class DOMTransformer {
 	private ASTNode processBlock(BlockTree tree) {
 		Block $ = ast.newBlock();
 		for (ParseTree pt : tree.statements) {
-			$.statements().add(transform(pt));
+			if(notNullStatement(pt))
+			$.statements().add(transform(Block.STATEMENTS_PROPERTY, pt));
 		}
 		return $;
 	}
@@ -555,8 +608,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processCatchClause(CatchTree tree) {
 		CatchClause $ = ast.newCatchClause();
-		$.setException(convertToSingleVariableDeclaration(transform(tree.exception)));
-		$.setBody((Block) transform(tree.catchBody));
+		transformAndSetProperty($, CatchClause.EXCEPTION_PROPERTY,tree.exception);
+		transformAndSetProperty($,CatchClause.BODY_PROPERTY,tree.catchBody);
 		return $;
 	}
 
@@ -564,13 +617,22 @@ public class DOMTransformer {
 	 * @param asClassDeclaration
 	 * @return
 	 */
-	private ASTNode processClassDeclaration(ClassDeclarationTree tree) {
+	private ASTNode processClassDeclaration(StructuralPropertyDescriptor property, ClassDeclarationTree tree) {
 		TypeDeclaration $ = ast.newTypeDeclaration();
 		$.setName(transformLabelName(tree.name));
-		if(tree.superClass != null )
-			$.setSuperclassExpression((Expression) transform(tree.superClass));
+		transformAndSetProperty($,TypeDeclaration.SUPERCLASS_EXPRESSION_PROPERTY,tree.superClass);
 		for(ParseTree child : tree.elements){
-			$.bodyDeclarations().add(transform(child));
+			if(child.type != ParseTreeType.EMPTY_STATEMENT){
+				$.bodyDeclarations().add(transform(TypeDeclaration.BODY_DECLARATIONS_PROPERTY,child));
+			}
+		}
+		attachJSDoc(tree,$);
+		Class<?> claz = classForProperty(property);
+		if(claz.isAssignableFrom(Expression.class)){
+			return ast.newTypeDeclarationExpression($);
+		}
+		if(claz.isAssignableFrom(Statement.class)){
+			return ast.newTypeDeclarationStatement($);
 		}
 		return $;
 	}
@@ -582,7 +644,7 @@ public class DOMTransformer {
 	private ASTNode processCommaExpression(CommaExpressionTree tree) {
 		ListExpression $ = ast.newListExpression();
 		for(ParseTree expr : tree.expressions){
-			$.expressions().add(transform(expr));
+			$.expressions().add(transform(ListExpression.EXPRESSIONS_PROPERTY,expr));
 		}
 		return $;
 	}
@@ -593,9 +655,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processConditionalExpression(ConditionalExpressionTree tree) {
 		ConditionalExpression $ = ast.newConditionalExpression();
-		$.setExpression( (Expression) transform(tree.condition));
-		$.setThenExpression((Expression) transform(tree.left));
-		$.setElseExpression((Expression) transform(tree.right));
+		transformAndSetProperty($,ConditionalExpression.EXPRESSION_PROPERTY,tree.condition);
+		transformAndSetProperty($,ConditionalExpression.THEN_EXPRESSION_PROPERTY,tree.left);
+		transformAndSetProperty($,ConditionalExpression.ELSE_EXPRESSION_PROPERTY,tree.right);
 		return $;
 	}
 
@@ -622,10 +684,10 @@ public class DOMTransformer {
 	 * @param asDefaultParameter
 	 * @return
 	 */
-	private ASTNode processDefaultParameter(DefaultParameterTree tree) {
+	private ASTNode processDefaultParameter(StructuralPropertyDescriptor property, DefaultParameterTree tree) {
 		// TODO: handle default values properly. DOM ast does not have support 
 		// for it and needs to be enhanced.
-		return transform(tree.lhs);
+		return transform(property,tree.lhs);
 	}
 
 	/**
@@ -634,8 +696,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processDoLoop(DoWhileStatementTree tree) {
 		DoStatement $ = ast.newDoStatement();
-		$.setExpression((Expression) transform(tree.condition));
-		$.setBody((Statement) transform(tree.body));
+		transformAndSetProperty($,DoStatement.EXPRESSION_PROPERTY,tree.condition);
+		transformAndSetProperty($,DoStatement.BODY_PROPERTY,tree.body);
 		return $;
 	}
 
@@ -645,8 +707,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processElementGet(MemberLookupExpressionTree tree) {
 		ArrayAccess $ = ast.newArrayAccess();
-		$.setArray((Expression) transform(tree.memberExpression));
-		$.setIndex((Expression) transform(tree.operand));
+		transformAndSetProperty($,ArrayAccess.INDEX_PROPERTY,tree.memberExpression);
+		transformAndSetProperty($,ArrayAccess.ARRAY_PROPERTY,tree.operand);
 		return $;
 	}
 
@@ -672,20 +734,16 @@ public class DOMTransformer {
 				VariableDeclarationListTree vdTree = tree.declaration.asVariableDeclarationList();
 				VariableDeclarationStatement statement = ast.newVariableDeclarationStatement();
 				for(ParseTree child : vdTree.declarations){
-					statement.fragments().add(transform(child));
+					statement.fragments().add(transform(VariableDeclarationStatement.FRAGMENTS_PROPERTY,child));
 				}
 				$.setDeclaration(statement);
 			}else{
-				ASTNode decl = transform(tree.declaration);
-				if(decl instanceof Expression){
-					decl = ast.newExpressionStatement((Expression) decl);
-				}
-				$.setDeclaration((ProgramElement) decl);
+				transformAndSetProperty($,ExportDeclaration.DECLARATION_PROPERTY,tree.declaration);
 			}
 		}
 		if (tree.exportSpecifierList != null) {
 			for (ParseTree spec : tree.exportSpecifierList) {
-				$.specifiers().add(transform(spec));
+				$.specifiers().add(transform(ExportDeclaration.SPECIFIERS_PROPERTY,spec));
 			}
 		}
 		if(tree.from != null){
@@ -712,9 +770,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processExpressionStatement(ExpressionStatementTree tree ) {
 		ExpressionStatement $ = ast.newExpressionStatement();
-		Expression e = (Expression) transform(tree.expression);
-		if( e != null )
-			$.setExpression(e);
+		transformAndSetProperty($,ExpressionStatement.EXPRESSION_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -724,9 +780,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processForInLoop(ForInStatementTree tree) {
 		ForInStatement $ = ast.newForInStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setIterationVariable((Expression)transform(tree.initializer));
-		$.setCollection((Expression) transform(tree.collection));
+		transformAndSetProperty($, ForInStatement.BODY_PROPERTY,tree.body);
+		transformAndSetProperty($, ForInStatement.ITERATION_VARIABLE_PROPERTY,tree.initializer);
+		transformAndSetProperty($, ForInStatement.COLLECTION_PROPERTY,tree.collection);
 		return $;
 	}
 	
@@ -736,21 +792,32 @@ public class DOMTransformer {
 	 */
 	private ASTNode processForLoop(ForStatementTree tree) {
 		ForStatement $ = ast.newForStatement();
-		$.setBody((Statement) transform(tree.body));
+		transformAndSetProperty($, ForStatement.BODY_PROPERTY, tree.body);
 		if(notNullStatement(tree.condition))
-			$.setExpression((Expression) transform(tree.condition));
+			transformAndSetProperty($,ForStatement.EXPRESSION_PROPERTY,tree.condition);
 		if(notNullStatement(tree.initializer)){
 			if(tree.initializer.type == ParseTreeType.VARIABLE_DECLARATION_LIST){
 				VariableDeclarationListTree listTree = tree.initializer.asVariableDeclarationList();
+				int startPosition =listTree.location.start.offset;
+				final VariableDeclarationExpression vd = ast.newVariableDeclarationExpression();
+				vd.setKind(convertVariableKind(listTree.declarationType));
+				
 				for(ParseTree child : listTree.declarations){
-					$.initializers().add(ast.newVariableDeclarationExpression(transform(child)));
+					vd.fragments().add(transform(VariableDeclarationExpression.FRAGMENTS_PROPERTY,child));
+					//The start position for the very first expression should start from list Tree. 
+					if(startPosition <0){
+						startPosition = child.location.start.offset;
+					}
+					vd.setSourceRange(startPosition, child.location.end.offset -startPosition);
+					startPosition = -1;
 				}
+				$.initializers().add(vd);
 			}else{
-				$.initializers().add(transform(tree.initializer));
+				$.initializers().add(transform(ForStatement.INITIALIZERS_PROPERTY, tree.initializer));
 			}
 		}
 		if( notNullStatement(tree.increment))
-			$.updaters().add(transform(tree.increment));
+			$.updaters().add(transform(ForStatement.UPDATERS_PROPERTY, tree.increment));
 		return $;
 	}	
 
@@ -760,8 +827,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processForOf(ForOfStatementTree tree) {
 		ForOfStatement $ = ast.newForOfStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setCollection((Expression) transform(tree.collection));
+		transformAndSetProperty($,ForOfStatement.BODY_PROPERTY, tree.body);
+		transformAndSetProperty($,ForOfStatement.ITERATION_VARIABLE_PROPERTY,tree.initializer);
+		transformAndSetProperty($,ForOfStatement.COLLECTION_PROPERTY,tree.collection);
 		return $;
 	}
 
@@ -769,48 +837,35 @@ public class DOMTransformer {
 	 * @param asFunctionDeclaration
 	 * @return
 	 */
-	private <T extends ASTNode> T processFunction(FunctionDeclarationTree tree) {
+	private ASTNode processFunction(StructuralPropertyDescriptor property, FunctionDeclarationTree tree) {
 		
 		if(tree.kind == FunctionDeclarationTree.Kind.ARROW){
 			ArrowFunctionExpression $ = ast.newArrowFunctionExpression();
-			if (tree.functionBody != null) {
-				ASTNode node = transform(tree.functionBody);
-				if(node != null ){
-					if (node.getNodeType() == ASTNode.BLOCK) {
-						$.setBody((Block) node);
-					}
-					else {
-						$.setExpression((Expression) node);
-					}
-				}
-			}
+			tryTransformAndSetProperty($,ArrowFunctionExpression.BODY_PROPERTY,tree.functionBody);
+			tryTransformAndSetProperty($,ArrowFunctionExpression.EXPRESSION_PROPERTY,tree.functionBody);
 			if(tree.formalParameterList != null ){ 
 				for(ParseTree param : tree.formalParameterList.parameters){
-					ASTNode aParam = transform(param);
-					if(aParam.getNodeType() == ASTNode.SINGLE_VARIABLE_DECLARATION){
-						$.parameters().add(aParam);
-					}else{
-						$.parameters().add(convertToSingleVariableDeclaration((Name) aParam));
-						
-					}
+					$.parameters().add(transform(ArrowFunctionExpression.PARAMETERS_PROPERTY,param));
 				}
 			}
-			return (T) $;
+			return $;
 		}
 		
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
+		attachJSDoc(tree,$);
 		$.setGenerator(tree.isGenerator);
-		$.setBody((Block) transform(tree.functionBody));
-		if(tree.name != null )
-			$.setMethodName(transformLabelName(tree.name));
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.functionBody);
+		transformAndSetProperty($, FunctionDeclaration.RETURN_TYPE2_PROPERTY,tree.returnType);
+		if(tree.name != null ){
+			SimpleName name = transformLabelName(tree.name);
+			$.setMethodName(name);
+			$.setConstructor(name.getIdentifier().equals("constructor") || name.getIdentifier().equals("\"constructor\""));  //$NON-NLS-1$//$NON-NLS-2$
+		}
 		if(tree.isStatic)
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		
 		for(ParseTree param : tree.formalParameterList.parameters){
-			$.parameters().add(convertToSingleVariableDeclaration(transform(param)));
-		}
-		if(tree.returnType != null ){
-			$.setReturnType2((Type) transform(tree.returnType));
+			$.parameters().add(transform(FunctionDeclaration.PARAMETERS_PROPERTY,param));
 		}
 		
 		if(tree.access != null){
@@ -826,25 +881,26 @@ public class DOMTransformer {
 					modifierKeyword = ModifierKeyword.PRIVATE_KEYWORD;
 					break;
 				default :
-					throw new IllegalStateException("Unexpected access modifier type");
+					throw new IllegalStateException("Unexpected access modifier type"); //$NON-NLS-1$
 			}
 			if(modifierKeyword != null){
 				$.modifiers().add(ast.newModifier(modifierKeyword));
 			}
 		}
 		
-		// Kind.Expression or MEMBER
-		if(tree.kind == Kind.MEMBER){
-			return (T) $;
+		Class<?> claz = classForProperty(property);
+		if(claz.isAssignableFrom(FunctionDeclaration.class)){
+			return $;
 		}
-		
-		if(tree.kind == Kind.EXPRESSION ) {
+		if(claz.isAssignableFrom(Expression.class)){
 			FunctionExpression e = ast.newFunctionExpression();
 			e.setMethod($);
-			return (T) e;
+			return e;
 		}
-		//Kind.Declaration
-		return (T) ast.newFunctionDeclarationStatement($);
+		if(claz.isAssignableFrom(Statement.class)){
+			return ast.newFunctionDeclarationStatement($);
+		}
+		return $;
 			
 	}
 
@@ -854,15 +910,11 @@ public class DOMTransformer {
 	 */
 	private ASTNode processFunctionCall(CallExpressionTree tree) {
 		FunctionInvocation $  = ast.newFunctionInvocation();
-		ASTNode expr = transform(tree.operand);
-		if(expr.getNodeType() == ASTNode.SIMPLE_NAME){
-			$.setName((SimpleName) expr);
-		}else{
-			$.setExpression((Expression) expr);
-		}
-		
+		tryTransformAndSetProperty($,FunctionInvocation.NAME_PROPERTY,tree.operand);
+		if($.getName() == null )
+			tryTransformAndSetProperty($, FunctionInvocation.EXPRESSION_PROPERTY,tree.operand);
 		for (ParseTree pt : tree.arguments.arguments) {
-			$.arguments().add(transform(pt));
+			$.arguments().add(transform(FunctionInvocation.ARGUMENTS_PROPERTY, pt));
 		}
 		return $;
 	}
@@ -871,13 +923,22 @@ public class DOMTransformer {
 	 * @param asGetAccessor
 	 * @return
 	 */
-	private ASTNode processGetAccessor(GetAccessorTree tree) {
+	private ASTNode processGetAccessor(StructuralPropertyDescriptor property, GetAccessorTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
-		$.setBody((Block) transform(tree.body));
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
 		$.modifiers().add(ast.newModifier(ModifierKeyword.GET_KEYWORD));
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		}
+		Class<?> claz = classForProperty(property);
+		if(claz.isAssignableFrom(Expression.class)){
+			FunctionExpression fe = ast.newFunctionExpression();
+			fe.setMethod($);
+			return fe;
+		}
+		if(claz.isAssignableFrom(Statement.class)){
+			return ast.newFunctionDeclarationStatement($);
 		}
 		return $;
 	}
@@ -888,10 +949,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processIfStatement(IfStatementTree tree) {
 		IfStatement $ = ast.newIfStatement();
-		$.setExpression((Expression) transform(tree.condition));
-		$.setThenStatement((Statement) transform(tree.ifClause));
-		if(tree.elseClause != null)
-			$.setElseStatement((Statement) transform(tree.elseClause));
+		transformAndSetProperty($,IfStatement.EXPRESSION_PROPERTY,tree.condition);
+		transformAndSetProperty($,IfStatement.THEN_STATEMENT_PROPERTY,tree.ifClause);
+		transformAndSetProperty($, IfStatement.ELSE_STATEMENT_PROPERTY,tree.elseClause);
 		return $;
 	}
 
@@ -906,17 +966,23 @@ public class DOMTransformer {
 	 */
 	private ASTNode processImportDecl(ImportDeclarationTree tree) {
 		ImportDeclaration $ = ast.newImportDeclaration();
+		$.setSource(transformStringLiteral(tree.moduleSpecifier.asLiteral()));
 		if(tree.defaultBindingIdentifier != null){
-			$.setName(transformLabelName(tree.defaultBindingIdentifier));
+			ModuleSpecifier defaultModule = ast.newModuleSpecifier();
+			defaultModule.setDefault(true);
+			defaultModule.setLocal(transformLabelName(tree.defaultBindingIdentifier));
+			setSourceRange(defaultModule,tree.defaultBindingIdentifier);
+			$.specifiers().add(defaultModule);
 		}
 		if(tree.nameSpaceImportIdentifier != null ){
 			ModuleSpecifier m = ast.newModuleSpecifier();
 			m.setNamespace(true);
 			m.setLocal(transformLabelName(tree.nameSpaceImportIdentifier.asIdentifier()));
-			setSourceRange(m,tree);
+			setSourceRange(m,tree.nameSpaceImportIdentifier);
+			$.specifiers().add(m);
 		}else if(tree.importSpecifierList != null){
 			for(ParseTree spec : tree.importSpecifierList){
-				$.specifiers().add(transform(spec));
+				$.specifiers().add(transform(ImportDeclaration.SPECIFIERS_PROPERTY,spec));
 			}
 		}
 		return $;
@@ -930,8 +996,8 @@ public class DOMTransformer {
 	private ASTNode processImportSpec(ImportSpecifierTree tree) {
 		ModuleSpecifier $ = ast.newModuleSpecifier();
 		if(tree.destinationName != null)
-			$.setDiscoverableName(transformLabelName(tree.destinationName.asIdentifier()));
-		$.setLocal(transformLabelName(tree.importedName.asIdentifier()));
+			$.setLocal(transformLabelName(tree.destinationName.asIdentifier()));
+		$.setDiscoverableName(transformLabelName(tree.importedName.asIdentifier()));
 		return $;
 	}
 
@@ -942,7 +1008,7 @@ public class DOMTransformer {
 	private ASTNode processLabeledStatement(LabelledStatementTree tree) {
 		LabeledStatement $ = ast.newLabeledStatement();
 		$.setLabel(transformLabelName(tree.name));
-		$.setBody((Statement) transform(tree.statement));
+		transformAndSetProperty($,LabeledStatement.BODY_PROPERTY,tree.statement);
 		return $;
 	}
 
@@ -988,8 +1054,15 @@ public class DOMTransformer {
 	 * @param asIdentifierExpression
 	 * @return
 	 */
-	private ASTNode processName(IdentifierExpressionTree tree) {
-		return transformLabelName(tree.identifierToken);
+	private ASTNode processName(StructuralPropertyDescriptor property, IdentifierExpressionTree tree) {
+		Class<?> claz = classForProperty(property);
+		SimpleName sn = transformLabelName(tree.identifierToken);
+		if(claz.isAssignableFrom(SingleVariableDeclaration.class)){
+			SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
+			$.setName(sn);
+			return $;
+		}
+		return sn;
 	}
 
 	/**
@@ -998,10 +1071,10 @@ public class DOMTransformer {
 	 */
 	private ASTNode processNewExpression(NewExpressionTree tree) {
 		ClassInstanceCreation $ = ast.newClassInstanceCreation();
-		$.setExpression((Expression) transform(tree.operand));
+		transformAndSetProperty($,ClassInstanceCreation.MEMBER_PROPERTY,tree.operand);
 		if(tree.arguments != null ){
 			for(ParseTree arg : tree.arguments.arguments){
-				$.arguments().add(transform(arg));
+				$.arguments().add(transform(ClassInstanceCreation.ARGUMENTS_PROPERTY,arg));
 			}
 		}
 		return $;
@@ -1015,6 +1088,24 @@ public class DOMTransformer {
 		return ast.newEmptyStatement();
 	}
 
+	
+	/**
+	 * @param asObjectPattern
+	 * @return
+	 */
+	private ASTNode processObjectPattern(StructuralPropertyDescriptor property, ObjectPatternTree tree) {
+		ObjectName $ = ast.newObjectName();
+		for(ParseTree child: tree.fields){
+			$.objectProperties().add(convertToObjectLiteralField(child));
+		}
+		if(classForProperty(property).isAssignableFrom(SingleVariableDeclaration.class)){
+			SingleVariableDeclaration svd = ast.newSingleVariableDeclaration();
+			svd.setPattern($);
+			return svd;
+		}
+		return $;
+	}
+	
 	/**
 	 * @param asObjectLiteralExpression
 	 * @return
@@ -1022,80 +1113,95 @@ public class DOMTransformer {
 	private ASTNode processObjectLiteral(ObjectLiteralExpressionTree tree) {
 		ObjectLiteral $ = ast.newObjectLiteral(); 
 		for(ParseTree  elem : tree.propertyNameAndValues){
-			ObjectLiteralField f = ast.newObjectLiteralField();
-			switch (elem.type) {
-				case GET_ACCESSOR:
-					f.setKind(FieldKind.GET);
-					final GetAccessorTree getAccessor = elem.asGetAccessor();
-					f.setFieldName(transformObjectLitKeyAsString(getAccessor.propertyName));
-					f.setInitializer(transformAsFunctionExpression(getAccessor));
-					break;
-				case COMPUTED_PROPERTY_GETTER:
-					f.setKind(FieldKind.GET);
-					final ComputedPropertyGetterTree compGetter= elem.asComputedPropertyGetter();
-					f.setFieldName((Expression) transform(compGetter.property));
-					f.setInitializer(transformAsFunctionExpression(compGetter));
-					break;
-				case SET_ACCESSOR:
-					f.setKind(FieldKind.SET);
-					final SetAccessorTree setAccessor= elem.asSetAccessor();
-					f.setFieldName(transformObjectLitKeyAsString(setAccessor.propertyName));
-					f.setInitializer(transformAsFunctionExpression(setAccessor));
-					break;
-				case COMPUTED_PROPERTY_SETTER:
-					f.setKind(FieldKind.SET);
-					final ComputedPropertySetterTree compSetter = elem.asComputedPropertySetter();
-					f.setFieldName((Expression) transform(compSetter.property));
-					f.setInitializer(transformAsFunctionExpression(compSetter));
-					break;
-				case COMPUTED_PROPERTY_DEFINITION:
-					f.setKind(FieldKind.INIT);
-					final ComputedPropertyDefinitionTree compDef = elem.asComputedPropertyDefinition();
-					f.setFieldName((Expression) transform(compDef.property));
-					f.setInitializer((Expression) transform(compDef.value));
-					break;
-				case COMPUTED_PROPERTY_MEMBER_VARIABLE:
-					f.setKind(FieldKind.INIT);
-					final ComputedPropertyMemberVariableTree compVariable = elem.asComputedPropertyMemberVariable();
-					f.setFieldName((Expression) transform(compVariable.property));
-					f.setInitializer((Expression) transform(compVariable.declaredType));
-					break;
-				case COMPUTED_PROPERTY_METHOD:
-					f.setKind(FieldKind.INIT);
-					final ComputedPropertyMethodTree compMethod = elem.asComputedPropertyMethod();
-					f.setFieldName((Expression) transform(compMethod.property));
-					f.setInitializer(transformAsFunctionExpression(compMethod));
-					break;
-				case FUNCTION_DECLARATION:
-					f.setKind(FieldKind.INIT);
-					final FunctionDeclarationTree functionDeclaration = elem.asFunctionDeclaration();
-					f.setFieldName(transformObjectLitKeyAsString(functionDeclaration.name));
-					f.setInitializer(transform(functionDeclaration));
-					break;
-				default :
-					f.setKind(FieldKind.INIT);
-					final PropertyNameAssignmentTree assignment = elem.asPropertyNameAssignment();
-					f.setFieldName(transformObjectLitKeyAsString(assignment.name));
-					if(assignment.value !=null)
-						f.setInitializer((Expression) transform(assignment.value));
-					break;
-			}
+			ObjectLiteralField f = convertToObjectLiteralField(elem);
 			$.fields().add(f);
 		}
 		return $;
 	}
 
 	/**
-	 * @param asObjectPattern
+	 * @param elem
 	 * @return
 	 */
-	private ASTNode processObjectPattern(ObjectPatternTree tree) {
-		ObjectName $ = ast.newObjectName();
-		for(ParseTree child: tree.fields){
-			$.objectProperties().add(transform(child));
+	private ObjectLiteralField convertToObjectLiteralField(ParseTree elem) {
+		ObjectLiteralField f = ast.newObjectLiteralField();
+		switch (elem.type) {
+			case GET_ACCESSOR:{
+				f.setKind(FieldKind.GET);
+				final GetAccessorTree getAccessor = elem.asGetAccessor();
+				f.setFieldName(transformObjectLitKeyAsString(getAccessor.propertyName));
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,getAccessor);
+				break;
+			}
+			case COMPUTED_PROPERTY_GETTER:{
+				f.setKind(FieldKind.GET);
+				final ComputedPropertyGetterTree compGetter= elem.asComputedPropertyGetter();
+				transformAndSetProperty(f,ObjectLiteralField.FIELD_NAME_PROPERTY,compGetter.property);
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,compGetter);
+				break;
+			}
+			case SET_ACCESSOR:{
+				f.setKind(FieldKind.SET);
+				final SetAccessorTree setAccessor= elem.asSetAccessor();
+				f.setFieldName(transformObjectLitKeyAsString(setAccessor.propertyName));
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,setAccessor);
+				break;
+			}
+			case COMPUTED_PROPERTY_SETTER:{
+				f.setKind(FieldKind.SET);
+				final ComputedPropertySetterTree compSetter = elem.asComputedPropertySetter();
+				transformAndSetProperty(f, ObjectLiteralField.FIELD_NAME_PROPERTY,compSetter.property);
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,compSetter.body);
+				break;
+			}
+			case COMPUTED_PROPERTY_DEFINITION:{
+				f.setKind(FieldKind.INIT);
+				final ComputedPropertyDefinitionTree compDef = elem.asComputedPropertyDefinition();
+				transformAndSetProperty(f, ObjectLiteralField.FIELD_NAME_PROPERTY,compDef.property);
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY, compDef.value);
+				break;
+			}
+			case COMPUTED_PROPERTY_MEMBER_VARIABLE:{
+				f.setKind(FieldKind.INIT);
+				final ComputedPropertyMemberVariableTree compVariable = elem.asComputedPropertyMemberVariable();
+				transformAndSetProperty(f, ObjectLiteralField.FIELD_NAME_PROPERTY, compVariable.property);
+				transformAndSetProperty(f, ObjectLiteralField.INITIALIZER_PROPERTY, compVariable.declaredType);
+				break;
+			}
+			case COMPUTED_PROPERTY_METHOD:{
+				f.setKind(FieldKind.INIT);
+				final ComputedPropertyMethodTree compMethod = elem.asComputedPropertyMethod();
+				transformAndSetProperty(f,ObjectLiteralField.FIELD_NAME_PROPERTY,compMethod.property);
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,compMethod);
+				break;
+			}
+			case FUNCTION_DECLARATION:{
+				f.setKind(FieldKind.INIT);
+				final FunctionDeclarationTree functionDeclaration = elem.asFunctionDeclaration();
+				f.setFieldName(transformObjectLitKeyAsString(functionDeclaration.name));
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,functionDeclaration);
+				break;
+			}
+			case DEFAULT_PARAMETER:{
+				f.setKind(FieldKind.INIT);
+				final DefaultParameterTree defaultTree = elem.asDefaultParameter();
+				transformAndSetProperty(f,ObjectLiteralField.FIELD_NAME_PROPERTY,defaultTree.lhs);
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,defaultTree.defaultValue);
+				break;
+			}
+			default :{
+				f.setKind(FieldKind.INIT);
+				final PropertyNameAssignmentTree assignment = elem.asPropertyNameAssignment();
+				f.setFieldName(transformObjectLitKeyAsString(assignment.name));
+				transformAndSetProperty(f,ObjectLiteralField.INITIALIZER_PROPERTY,assignment.value);
+				break;
+			}
 		}
-		return $;
+		setSourceRange(f,elem);
+		return f;
 	}
+
+
 
 	/**
 	 * @param asParenExpression
@@ -1103,7 +1209,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processParenthesizedExpression(ParenExpressionTree tree) {
 		ParenthesizedExpression $ = ast.newParenthesizedExpression();
-		$.setExpression((Expression) transform(tree.expression));
+		transformAndSetProperty($, ParenthesizedExpression.EXPRESSION_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -1113,8 +1219,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processPostfixExpression(PostfixExpressionTree tree) {
 		PostfixExpression $ = ast.newPostfixExpression();
-		$.setOperand((Expression) transform(tree.operand));
-		$.setOperator(org.eclipse.wst.jsdt.core.dom.PostfixExpression.Operator.toOperator(tree.operator.toString()));
+		transformAndSetProperty($,PostfixExpression.OPERAND_PROPERTY,tree.operand);
+		$.setOperator(PostfixExpression.Operator.toOperator(tree.operator.toString()));
 		return $;
 	}
 
@@ -1122,10 +1228,13 @@ public class DOMTransformer {
 	 * @param asMemberExpression
 	 * @return
 	 */
-	private ASTNode processPropertyGet(MemberExpressionTree tree) {
+	private ASTNode processPropertyGet(StructuralPropertyDescriptor property, MemberExpressionTree tree) {
+		SimpleName name = transformLabelName(tree.memberName);
+		if(tree.operand == null && classForProperty(property) == SimpleName.class)
+			return name;
 		FieldAccess $ = ast.newFieldAccess();
-		$.setExpression((Expression) transform(tree.operand));
-		$.setName(transformLabelName(tree.memberName));
+		$.setName(name);
+		transformAndSetProperty($,FieldAccess.EXPRESSION_PROPERTY,tree.operand);
 		return $;
 	}
 
@@ -1136,9 +1245,8 @@ public class DOMTransformer {
 	private ASTNode processPropertyNameAssignment(PropertyNameAssignmentTree tree) {
 		VariableDeclarationFragment vdf = ast.newVariableDeclarationFragment();
 		vdf.setName(transformLabelName((IdentifierToken) tree.name));
-		vdf.setInitializer((Expression) transform(tree.value));
-		FieldDeclaration $ = ast.newFieldDeclaration(vdf);
-		return $;
+		transformAndSetProperty(vdf,VariableDeclarationFragment.INITIALIZER_PROPERTY,tree.value);
+		return ast.newFieldDeclaration(vdf);
 	}
 
 	/**
@@ -1148,7 +1256,9 @@ public class DOMTransformer {
 	private ASTNode processRestParameter(RestParameterTree tree) {
 		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
 		if(tree.identifier != null){
-			$.setName(transformLabelName(tree.identifier.asIdentifier()));
+			RestElementName rest = ast.newRestElementName();
+			rest.setArgument(transformLabelName(tree.identifier));
+			$.setPattern(rest);
 		}
 		$.setVarargs(true);
 		return $;
@@ -1160,8 +1270,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processReturnStatement(ReturnStatementTree tree	) {
 		ReturnStatement $ = ast.newReturnStatement();
-		if(tree.expression != null)
-			$.setExpression((Expression) transform(tree.expression));
+		transformAndSetProperty($,ReturnStatement.EXPRESSION_PROPERTY, tree.expression);
 		return $;
 	}
 
@@ -1169,16 +1278,25 @@ public class DOMTransformer {
 	 * @param asSetAccessor
 	 * @return
 	 */
-	private ASTNode processSetAccessor(SetAccessorTree tree) {
+	private ASTNode processSetAccessor(StructuralPropertyDescriptor property, SetAccessorTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		$.modifiers().add(ast.newModifier(ModifierKeyword.SET_KEYWORD));
 		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
-		$.setBody((Block) transform(tree.body));
+		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
 		final SingleVariableDeclaration p = ast.newSingleVariableDeclaration();
 		p.setName(transformLabelName(tree.parameter));
 		$.parameters().add(p);
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
+		}
+		Class<?> claz = classForProperty(property);
+		if(claz.isAssignableFrom(Expression.class)){
+			FunctionExpression fe = ast.newFunctionExpression();
+			fe.setMethod($);
+			return fe;
+		}
+		if(claz.isAssignableFrom(Statement.class)){
+			return ast.newFunctionDeclarationStatement($);
 		}
 		return $;
 	}
@@ -1189,7 +1307,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processSpreadExpression(SpreadExpressionTree tree) {
 		SpreadElement $ = ast.newSpreadElement();
-		$.setArgument((Expression) transform(tree.expression));
+		transformAndSetProperty($, SpreadElement.ARGUMENT_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -1200,7 +1318,7 @@ public class DOMTransformer {
 	private ASTNode processSuper(SuperExpressionTree tree) {
 		//FIXME: we need a better way to handle super references. Simply
 		// treating as a name is not enough.
-		return ast.newSimpleName("super");
+		return ast.newSimpleName(SUPER);
 	}
 
 	/**
@@ -1210,7 +1328,7 @@ public class DOMTransformer {
 	private ASTNode processSwitchCase(CaseClauseTree tree) {
 		// statements of CaseClauseTree are handled on processSwitchStatement()
 		SwitchCase $ = ast.newSwitchCase();
-		$.setExpression((Expression) transform(tree.expression));
+		transformAndSetProperty($, SwitchCase.EXPRESSION_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -1221,6 +1339,7 @@ public class DOMTransformer {
 	private ASTNode processSwitchDefault(DefaultClauseTree tree) {
 		// statements of DefaultClauseTree are handled on processSwitchStatement()
 		SwitchCase $ = ast.newSwitchCase();
+		$.setExpression(null);
 		return $;
 	}
 
@@ -1230,19 +1349,19 @@ public class DOMTransformer {
 	 */
 	private ASTNode processSwitchStatement(SwitchStatementTree tree) {
 		SwitchStatement $ = ast.newSwitchStatement();
-		$.setExpression((Expression) transform(tree.expression));
+		transformAndSetProperty($,SwitchStatement.EXPRESSION_PROPERTY,tree.expression);
 		for (ParseTree pt : tree.caseClauses) {
 			if(pt.type == ParseTreeType.DEFAULT_CLAUSE){
 				DefaultClauseTree dct = pt.asDefaultClause();
-				$.statements().add(transform(dct));
+				$.statements().add(transform(SwitchStatement.STATEMENTS_PROPERTY,dct));
 				for (ParseTree dcs : dct.statements) {
-					$.statements().add(transform(dcs));
+					$.statements().add(transform(SwitchStatement.STATEMENTS_PROPERTY, dcs));
 				}
 			}else{
 				CaseClauseTree cct = pt.asCaseClause();
-				$.statements().add(transform(cct));
+				$.statements().add(transform(SwitchStatement.STATEMENTS_PROPERTY,cct));
 				for(ParseTree ccs : cct.statements){
-					$.statements().add(transform(ccs));
+					$.statements().add(transform(SwitchStatement.STATEMENTS_PROPERTY,ccs));
 				}
 			}
 		}
@@ -1255,12 +1374,26 @@ public class DOMTransformer {
 	 */
 	private ASTNode processTemplateLiteral(TemplateLiteralExpressionTree tree) {
 		TemplateLiteral $ = ast.newTemplateLiteral();
-		for ( ParseTree pt : tree.elements) {
-			ASTNode n = transform(pt);
-			if(n.getNodeType() == ASTNode.TEMPLATE_ELEMENT)
-				$.elements().add(transform(pt));
-			else
-				$.expressions().add(n);
+		transformAndSetProperty($,TemplateLiteral.TAG_PROPERTY,tree.operand);
+		Iterator<ParseTree> iterator = tree.elements.iterator();
+		ParseTree pt = null;
+		while(iterator.hasNext()){
+			pt = iterator.next();
+			if(pt.type == ParseTreeType.TEMPLATE_LITERAL_PORTION){
+				final TemplateElement element = (TemplateElement) transform(TemplateLiteral.ELEMENTS_PROPERTY,pt);
+				element.setTail(!iterator.hasNext());
+				$.elements().add(element);
+			}
+			else{
+				$.expressions().add(transform(TemplateLiteral.EXPRESSIONS_PROPERTY,pt));
+			}
+		}
+		//Add a tail element if there is not one.
+		if(pt != null && pt.type != ParseTreeType.TEMPLATE_LITERAL_PORTION){
+			TemplateElement el = ast.newTemplateElement();
+			el.setSourceRange(pt.location.start.offset,0);
+			el.setTail(true);
+			$.elements().add(el);
 		}
 		return $;
 	}
@@ -1271,7 +1404,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processTemplateLiteralPortion(TemplateLiteralPortionTree tree) {
 		TemplateElement $ = ast.newTemplateElement();
-		$.setStructuralProperty(TemplateElement.RAW_VALUE_PROPERTY, tree.value.asLiteral().value);
+		safeSetProperty($,TemplateElement.RAW_VALUE_PROPERTY,tree.value.asLiteral().value);
 		return $;
 	}
 
@@ -1280,7 +1413,7 @@ public class DOMTransformer {
 	 * @return
 	 */
 	private ASTNode processTemplateSubstitution(TemplateSubstitutionTree tree) {
-		return transform(tree.expression);
+		return transform(TemplateLiteral.EXPRESSIONS_PROPERTY,tree.expression);
 	}
 
 	/**
@@ -1297,7 +1430,7 @@ public class DOMTransformer {
 	 */
 	private ASTNode processThrowStatement(ThrowStatementTree tree) {
 		ThrowStatement $ = ast.newThrowStatement();
-		$.setExpression((Expression) transform(tree.value));
+		transformAndSetProperty($, ThrowStatement.EXPRESSION_PROPERTY,tree.value);
 		return $;	
 	}
 
@@ -1307,13 +1440,11 @@ public class DOMTransformer {
 	 */
 	private ASTNode processTryStatement(TryStatementTree tree) {
 		TryStatement $ = ast.newTryStatement();
-		$.setBody((Block) transform(tree.body));
+		transformAndSetProperty($,TryStatement.BODY_PROPERTY,tree.body);
 		if(tree.catchBlock != null ){
-			$.catchClauses().add(transform(tree.catchBlock));
+			$.catchClauses().add(transform(TryStatement.CATCH_CLAUSES_PROPERTY,tree.catchBlock));
 		}
-		if(tree.finallyBlock != null ){
-			$.setFinally((Block) transform(tree.finallyBlock));
-		}
+		transformAndSetProperty($,TryStatement.FINALLY_PROPERTY,tree.finallyBlock);
 		return $;
 	}
 
@@ -1342,7 +1473,7 @@ public class DOMTransformer {
 	private ASTNode processUnaryExpression(UnaryExpressionTree tree) {
 		PrefixExpression $ = ast.newPrefixExpression();
 		$.setOperator(PrefixExpression.Operator.toOperator(tree.operator.toString()));
-		$.setOperand((Expression) transform(tree.operand));
+		transformAndSetProperty($,PrefixExpression.OPERAND_PROPERTY,tree.operand);
 		return $;
 	}
 
@@ -1353,10 +1484,8 @@ public class DOMTransformer {
 	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
 		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
 		//TODO: Handle destructuring assignment
-		$.setPattern((Name) transform(tree.lvalue));
-		if(tree.initializer != null){
-			$.setInitializer((Expression) transform(tree.initializer));
-		}
+		transformAndSetProperty($,VariableDeclarationFragment.PATTERN_PROPERTY,tree.lvalue);
+		transformAndSetProperty($,VariableDeclarationFragment.INITIALIZER_PROPERTY,tree.initializer);
 		return $;
 	}
 
@@ -1369,7 +1498,9 @@ public class DOMTransformer {
 		// multiple elements should be handled on their caller 
 		// process* methods
 		Assert.isTrue(tree.declarations.size() == 1);
-		return ast.newVariableDeclarationExpression(transform(tree.declarations.get(0)));
+		VariableDeclarationExpression $ = ast.newVariableDeclarationExpression((VariableDeclarationFragment) transform(VariableDeclarationExpression.FRAGMENTS_PROPERTY,tree.declarations.get(0)));
+		$.setKind(convertVariableKind(tree.declarationType));
+		return $;
 	}
 
 	/**
@@ -1390,21 +1521,22 @@ public class DOMTransformer {
 				break;
 		}
 		for(ParseTree decl : tree.declarations.declarations){
-			$.fragments().add(transform(decl));
+			$.fragments().add(transform(VariableDeclarationStatement.FRAGMENTS_PROPERTY,decl));
 		}
+		attachJSDoc(tree,$);
 		return $;
 	}
-	
-   /**
- * @param asWhileStatement
- * @return
- */
-private ASTNode processWhileLoop(WhileStatementTree tree) {
-	WhileStatement $ = ast.newWhileStatement();
-	$.setExpression((Expression) transform(tree.condition));
-	$.setBody((Statement) transform(tree.body));
-	return $;
-}
+
+	/**
+	 * @param asWhileStatement
+	 * @return
+	 */
+	private ASTNode processWhileLoop(WhileStatementTree tree) {
+		WhileStatement $ = ast.newWhileStatement();
+		transformAndSetProperty($, WhileStatement.EXPRESSION_PROPERTY, tree.condition);
+		transformAndSetProperty($, WhileStatement.BODY_PROPERTY, tree.body);
+		return $;
+	}
 
 	/**
 	 * @param asWithStatement
@@ -1412,8 +1544,8 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	 */
 	private ASTNode processWithStatement(WithStatementTree tree) {
 		WithStatement $ = ast.newWithStatement();
-		$.setBody((Statement) transform(tree.body));
-		$.setExpression((Expression) transform(tree.expression));
+		transformAndSetProperty($,WithStatement.BODY_PROPERTY,tree.body);
+		transformAndSetProperty($,WithStatement.EXPRESSION_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -1424,9 +1556,7 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	private ASTNode processYield(YieldExpressionTree tree) {
 		YieldExpression $ = ast.newYieldExpression();
 		$.setDelegate(Boolean.valueOf(tree.isYieldFor));
-		if(tree.expression != null ){
-			$.setArgument((Expression) transform(tree.expression));
-		}
+		transformAndSetProperty($,YieldExpression.ARGUMENT_PROPERTY,tree.expression);
 		return $;
 	}
 
@@ -1435,7 +1565,19 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	 * @param tree
 	 */
 	private void setSourceRange(ASTNode node, ParseTree tree) {
-		node.setSourceRange(tree.location.start.offset, tree.location.end.offset - tree.location.start.offset);
+		int startOffset = tree.location.start.offset;
+		if(node instanceof BodyDeclaration ){
+			BodyDeclaration bd = (BodyDeclaration)node;
+			if(bd.getJavadoc() != null ){
+				startOffset = bd.getJavadoc().getStartPosition();
+			}
+		}else if(node.getNodeType() == ASTNode.VARIABLE_DECLARATION_STATEMENT){
+			VariableDeclarationStatement vs = (VariableDeclarationStatement)node;
+			if(vs.getJavadoc() != null){
+				startOffset = vs.getJavadoc().getStartPosition();
+			}
+		}
+		node.setSourceRange(startOffset, tree.location.end.offset - startOffset);
 	}
 
 	/**
@@ -1445,13 +1587,82 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	private void setSourceRange(ASTNode node, Token token) {
 		node.setSourceRange(token.location.start.offset, token.location.end.offset - token.location.start.offset);
 	}
+	
+	private Comment handleJsDoc(ParseTree node) {
+	    if (!shouldAttachJSDocHere(node)) {
+	      return null;
+	    }
+	    return getJsDoc(node.location);
+	 }
+	
+  private boolean shouldAttachJSDocHere(ParseTree tree) {
+	    switch (tree.type) {
+	      case EXPRESSION_STATEMENT:
+	      case LABELLED_STATEMENT:
+	      case EXPORT_DECLARATION:
+	        return false;
+	      case CALL_EXPRESSION:
+	      case CONDITIONAL_EXPRESSION:
+	      case BINARY_OPERATOR:
+	      case MEMBER_EXPRESSION:
+	      case MEMBER_LOOKUP_EXPRESSION:
+	      case POSTFIX_EXPRESSION:
+	        ParseTree nearest = findNearestNode(tree);
+	        if (nearest.type == ParseTreeType.PAREN_EXPRESSION) {
+	          return false;
+	        }
+	        return true;
+	      default:
+	        return true;
+	    }
+	  }
+	 
+	  private Comment getJsDoc(SourceRange location) {
+		    Comment closestPreviousComment = null;
+		    while (currentComment != null &&
+		        currentComment.location.end.offset <= location.start.offset) {
+		      if (currentComment.type == Comment.Type.JSDOC) {
+		        closestPreviousComment = currentComment;
+		      }
+		      if (this.nextCommentIter.hasNext()) {
+		        currentComment = this.nextCommentIter.next();
+		      } else {
+		        currentComment = null;
+		      }
+		    }
 
-	private FunctionExpression transformAsFunctionExpression(ParseTree tree){
-		FunctionExpression $ = ast.newFunctionExpression();
-		$.setMethod((FunctionDeclaration) transform(tree));
-		setSourceRange($,tree);
-		return $;
-	}
+		    return closestPreviousComment;
+		  }
+	  
+	  private static ParseTree findNearestNode(ParseTree tree) {
+		    while (true) {
+		      switch (tree.type) {
+		        case EXPRESSION_STATEMENT:
+		          tree = tree.asExpressionStatement().expression;
+		          continue;
+		        case CALL_EXPRESSION:
+		          tree = tree.asCallExpression().operand;
+		          continue;
+		        case BINARY_OPERATOR:
+		          tree = tree.asBinaryOperator().left;
+		          continue;
+		        case CONDITIONAL_EXPRESSION:
+		          tree = tree.asConditionalExpression().condition;
+		          continue;
+		        case MEMBER_EXPRESSION:
+		          tree = tree.asMemberExpression().operand;
+		          continue;
+		        case MEMBER_LOOKUP_EXPRESSION:
+		          tree = tree.asMemberLookupExpression().operand;
+		          continue;
+		        case POSTFIX_EXPRESSION:
+		          tree = tree.asPostfixExpression().operand;
+		          continue;
+		        default:
+		          return tree;
+		      }
+		    }
+		  }
 
 	private ASTNode transformBooleanLiteral(Token token) {
 		BooleanLiteral $ = ast.newBooleanLiteral(token.type == TokenType.TRUE);
@@ -1463,7 +1674,7 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	    	SimpleName $ = ast.newSimpleName(token.value);
 	        setSourceRange($, token);
 	        return $;
-	      }
+	 }
 
 	private ASTNode transformNullLiteral(Token token) {
 		NullLiteral $ = ast.newNullLiteral();
@@ -1498,16 +1709,51 @@ private ASTNode processWhileLoop(WhileStatementTree tree) {
 	}
 	
 	private StringLiteral transformStringLiteral(Token token) {
-		StringLiteral $ = ast.newStringLiteral(token.asLiteral().value);
+		StringLiteral $ = ast.newStringLiteral();
+		$.setEscapedValue(token.asLiteral().value);
 		setSourceRange($,token);
 		return $;
 	}
 	
-	private SingleVariableDeclaration convertToSingleVariableDeclaration(Name name){
-		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
-		$.setPattern(name);
-		$.setSourceRange(name.getStartPosition(), name.getLength());
-		return $;
+	private void transformAndSetProperty(ASTNode node, StructuralPropertyDescriptor property, ParseTree tree){
+		if(tree == null ) return;
+		safeSetProperty(node, property, transform(property, tree));
+	}
+	private void tryTransformAndSetProperty(ASTNode node, StructuralPropertyDescriptor property, ParseTree tree){
+		if(tree == null || property == null ) return;
+		final ASTNode value = transform(property, tree);
+		if(classForProperty(property).isAssignableFrom(value.getClass())){
+			safeSetProperty(node, property, value);
+		}
+	}
+	
+	private void safeSetProperty(ASTNode node, StructuralPropertyDescriptor property, Object value){
+		if(property.isChildProperty()){
+			ChildPropertyDescriptor cp = (ChildPropertyDescriptor)property;
+			if(cp.isMandatory() && value == null ){
+				return;
+			}
+		}
+		node.setStructuralProperty(property, value);
+	}
+	
+	/**
+	 * @param property
+	 */
+	private Class<?> classForProperty(StructuralPropertyDescriptor property) {
+		if(property.isChildProperty()){
+			ChildPropertyDescriptor cp = (ChildPropertyDescriptor)property;
+			return cp.getChildType();
+		}
+		if (property.isChildListProperty() ){
+			ChildListPropertyDescriptor cl = (ChildListPropertyDescriptor) property;
+			return cl.getElementType();
+		}
+		if(property.isSimpleProperty()){
+			SimplePropertyDescriptor sp = (SimplePropertyDescriptor) property;
+			sp.getValueType();
+		}
+		return Object.class;
 	}
 	
 }

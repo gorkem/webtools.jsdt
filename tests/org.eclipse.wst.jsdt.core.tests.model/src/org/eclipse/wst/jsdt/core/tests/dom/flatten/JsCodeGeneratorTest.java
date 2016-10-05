@@ -19,7 +19,6 @@ import java.util.Scanner;
 import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
 import org.eclipse.wst.jsdt.core.dom.flatten.TrivialJsCodeGenerator;
 import org.eclipse.wst.jsdt.internal.compiler.closure.ClosureCompiler;
-import org.eclipse.wst.jsdt.internal.esprima.EsprimaParser;
 import org.junit.Test;
 
 @SuppressWarnings("nls")

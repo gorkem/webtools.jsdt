@@ -19,13 +19,17 @@ import org.eclipse.wst.jsdt.core.JavaScriptModelException;
 import org.eclipse.wst.jsdt.core.compiler.IProblem;
 import org.eclipse.wst.jsdt.core.dom.AST;
 import org.eclipse.wst.jsdt.core.dom.ASTNode;
+import org.eclipse.wst.jsdt.core.dom.BlockComment;
+import org.eclipse.wst.jsdt.core.dom.JSdoc;
 import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
+import org.eclipse.wst.jsdt.core.dom.LineComment;
 import org.eclipse.wst.jsdt.internal.compiler.problem.DefaultProblem;
 import org.eclipse.wst.jsdt.internal.compiler.problem.ProblemSeverities;
 
 import com.google.javascript.jscomp.parsing.parser.Parser;
 import com.google.javascript.jscomp.parsing.parser.Parser.Config;
 import com.google.javascript.jscomp.parsing.parser.SourceFile;
+import com.google.javascript.jscomp.parsing.parser.trees.Comment;
 import com.google.javascript.jscomp.parsing.parser.trees.ProgramTree;
 import com.google.javascript.jscomp.parsing.parser.util.SourcePosition;
 
@@ -79,6 +83,7 @@ public class ClosureCompiler {
 	
 	private String rawContent;
 	private IJavaScriptUnit unit;
+	private boolean commentsEnabled;
 	
 	private ClosureCompiler(){
 		super();
@@ -99,6 +104,11 @@ public class ClosureCompiler {
 		this.unit = content;
 		return this;
 	}
+	
+	public ClosureCompiler toggleComments( boolean enabled){
+		this.commentsEnabled = enabled;
+		return this;
+	}
 
 	public JavaScriptUnit parse() {
 		Config config = new Config(com.google.javascript.jscomp.parsing.parser.Parser.Config.Mode.ES6);
@@ -106,16 +116,52 @@ public class ClosureCompiler {
 		ErrorCollector errorCollector = new  ErrorCollector(source.name);
 		Parser parser = new Parser(config, errorCollector, source);
 		ProgramTree tree = parser.parseProgram();
-		
 		AST ast = AST.newAST(AST.JLS3);
 		ast.setDefaultNodeFlag(ASTNode.ORIGINAL);
-		DOMTransformer transformer = new DOMTransformer(ast);
-		ast.setDefaultNodeFlag(0);
-		JavaScriptUnit $ = transformer.transform(tree);
+		DOMTransformer transformer = new DOMTransformer(ast, parser.getComments());
+		JavaScriptUnit $ = (JavaScriptUnit) transformer.transform(null,tree);
+		$.setLineEndTable(LineNumberComputer.computeLineTable(source.contents));
 		$.setProblems(errorCollector.problems());
+		if(commentsEnabled){
+			$.setCommentTable(buildComments(parser.getComments(), ast));
+		}
+		ast.setDefaultNodeFlag(0);
 		return $;
 	}
 	
+	/**
+	 * @param comments
+	 */
+	private org.eclipse.wst.jsdt.core.dom.Comment[] buildComments(List<Comment> comments, AST ast) {
+		ArrayList<org.eclipse.wst.jsdt.core.dom.Comment> domComments = new ArrayList<org.eclipse.wst.jsdt.core.dom.Comment>();
+		for (Comment comment : comments) {
+			switch (comment.type) {
+				case BLOCK :
+					BlockComment bc = ast.newBlockComment();
+					setSourceRange(bc,comment);
+					domComments.add(bc);
+					break;
+				case SHEBANG:
+				case LINE:
+					LineComment lc = ast.newLineComment();
+					setSourceRange(lc,comment);
+					domComments.add(lc);
+					break;
+				case JSDOC:
+					JSdoc jd = ast.newJSdoc();
+					jd.setComment(comment.value);
+					setSourceRange(jd,comment);
+					domComments.add(jd);
+					break;
+			}
+		}
+		return domComments.toArray(new org.eclipse.wst.jsdt.core.dom.Comment[domComments.size()]);
+	}
+	
+	private void setSourceRange(ASTNode node, Comment comment) {
+		node.setSourceRange(comment.location.start.offset, comment.location.end.offset - comment.location.start.offset);
+	}
+
 	private SourceFile getSourceFile(){
 		String content = rawContent;
 		String filename = ""; //$NON-NLS-1$
@@ -130,5 +176,4 @@ public class ClosureCompiler {
 		return(new SourceFile(filename,content));
 	}
 	
-
 }

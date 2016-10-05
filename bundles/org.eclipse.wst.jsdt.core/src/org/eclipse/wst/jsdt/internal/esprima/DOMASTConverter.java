@@ -130,6 +130,7 @@ public class DOMASTConverter extends EStreeVisitor{
 	 * @see org.eclipse.wst.jsdt.internal.esprima.EStreeVisitor#visit(jdk.nashorn.api.scripting.ScriptObjectMirror, org.eclipse.wst.jsdt.internal.esprima.ESTreeNodeTypes)
 	 */
 	public VisitOptions visit(final ScriptObjectMirror object, final ESTreeNodeTypes nodeType, final String key) {
+
 		//Generate the dom AST objects and push it to stack.
 		switch(nodeType){
 			case Program:
@@ -499,10 +500,10 @@ public class DOMASTConverter extends EStreeVisitor{
 				break;
 			case FOR_OF_STATEMENT:
 				ForOfStatement fos = (ForOfStatement)parent;
-				if("left".equals(key)) //$NON-NLS-1$
-					fos.setIterationVariable((Statement) statement);
-				else if("body".equals(key)) //$NON-NLS-1$
-					fos.setBody((Statement) statement);
+//				if("left".equals(key)) //$NON-NLS-1$
+////					fos.setIterationVariable((Statement) statement);
+////				else if("body".equals(key)) //$NON-NLS-1$
+////					fos.setBody((Statement) statement);
 				break;
 			case TYPE_DECLARATION:
 				TypeDeclaration typeDec = (TypeDeclaration) parent;
@@ -754,11 +755,11 @@ public class DOMASTConverter extends EStreeVisitor{
 					fis.setCollection(expression);
 				break;
 			case FOR_OF_STATEMENT:
-				ForOfStatement fos = (ForOfStatement)parent;
-				if("left".equals(key)) //$NON-NLS-1$
-					fos.setIterationVariable(ast.newExpressionStatement(expression));
-				else if("right".equals(key)) //$NON-NLS-1$
-					fos.setCollection(expression);
+//				ForOfStatement fos = (ForOfStatement)parent;
+//				if("left".equals(key)) //$NON-NLS-1$
+//					fos.setIterationVariable(ast.newExpressionStatement(expression));
+//				else if("right".equals(key)) //$NON-NLS-1$
+//					fos.setCollection(expression);
 				break;
 			case TYPE_DECLARATION:
 				TypeDeclaration td = (TypeDeclaration) parent;
