@@ -32,7 +32,6 @@ import org.eclipse.wst.jsdt.core.dom.ArrayName;
 import org.eclipse.wst.jsdt.core.dom.ArrowFunctionExpression;
 import org.eclipse.wst.jsdt.core.dom.Assignment;
 import org.eclipse.wst.jsdt.core.dom.Assignment.Operator;
-import org.eclipse.wst.jsdt.core.dom.AssignmentName;
 import org.eclipse.wst.jsdt.core.dom.Block;
 import org.eclipse.wst.jsdt.core.dom.BreakStatement;
 import org.eclipse.wst.jsdt.core.dom.CatchClause;
@@ -50,7 +49,6 @@ import org.eclipse.wst.jsdt.core.dom.ForInStatement;
 import org.eclipse.wst.jsdt.core.dom.ForOfStatement;
 import org.eclipse.wst.jsdt.core.dom.ForStatement;
 import org.eclipse.wst.jsdt.core.dom.FunctionDeclaration;
-import org.eclipse.wst.jsdt.core.dom.FunctionDeclarationStatement;
 import org.eclipse.wst.jsdt.core.dom.FunctionExpression;
 import org.eclipse.wst.jsdt.core.dom.FunctionInvocation;
 import org.eclipse.wst.jsdt.core.dom.IfStatement;
@@ -59,7 +57,6 @@ import org.eclipse.wst.jsdt.core.dom.InfixExpression;
 import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
 import org.eclipse.wst.jsdt.core.dom.LabeledStatement;
 import org.eclipse.wst.jsdt.core.dom.ListExpression;
-import org.eclipse.wst.jsdt.core.dom.MetaProperty;
 import org.eclipse.wst.jsdt.core.dom.ModuleSpecifier;
 import org.eclipse.wst.jsdt.core.dom.NumberLiteral;
 import org.eclipse.wst.jsdt.core.dom.ObjectLiteral;
@@ -1328,6 +1325,15 @@ public class ClosureCompilerTests {
 	}
 	
 	@Test
+	public void testExport_7(){
+		JavaScriptUnit unit = parse("export default identifier");
+		assertFalse(unit.exports().isEmpty());
+		ExportDeclaration export = (ExportDeclaration) unit.exports().get(0);
+		assertNotNull(export.getDeclaration());
+		assertTrue(export.isDefault());
+	}
+	
+	@Test
 	public void testComments(){
 		JavaScriptUnit unit = parse("/**\n"
 					+ "*Life, Universe, and Everything\n"
@@ -1461,6 +1467,29 @@ public class ClosureCompilerTests {
 			}
 		}
 		fail();
+	}
+	
+	@Test
+	public void testChainFunctionCall(){
+		JavaScriptUnit unit = parse("browser \n"+
+									".init({browserName: 'chrome'}) \n" +
+									".get('http://angularjs.org/') \n" +
+									"// element method chaining \n" +
+									".elementById('the-basics') \n" +
+									".click()    // The 'click' call returns nothing, \n"+
+									".click()    // So we can call it many times without loosing the element scope \n"+
+									".click()    // ... \n"+
+									".text()     // The element scope is preserved and this 'text' call works. \n"+
+									".should.become('The Basics'); \n");
+		assertNotNull(unit);
+		ExpressionStatement expression = (ExpressionStatement) unit.statements().get(0);
+		assertSame(ASTNode.FUNCTION_INVOCATION, expression.getExpression().getNodeType());
+		FunctionInvocation fi = (FunctionInvocation)expression.getExpression();
+		assertNotNull(fi.getExpression());
+		assertSame(ASTNode.FIELD_ACCESS, fi.getExpression().getNodeType());
+		FieldAccess fa = (FieldAccess)fi.getExpression();
+		assertNotNull(fa.getName());
+		assertEquals("become",fa.getName().getIdentifier());
 	}
 	
 	@Test

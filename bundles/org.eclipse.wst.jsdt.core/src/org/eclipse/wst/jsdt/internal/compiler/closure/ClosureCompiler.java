@@ -20,6 +20,7 @@ import org.eclipse.wst.jsdt.core.compiler.IProblem;
 import org.eclipse.wst.jsdt.core.dom.AST;
 import org.eclipse.wst.jsdt.core.dom.ASTNode;
 import org.eclipse.wst.jsdt.core.dom.BlockComment;
+import org.eclipse.wst.jsdt.core.dom.ClosureCompilerASTConverter;
 import org.eclipse.wst.jsdt.core.dom.JSdoc;
 import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
 import org.eclipse.wst.jsdt.core.dom.LineComment;
@@ -39,8 +40,6 @@ import com.google.javascript.jscomp.parsing.parser.util.SourcePosition;
  */
 public class ClosureCompiler {
 	
-	
-
 	private static class ErrorCollector extends com.google.javascript.jscomp.parsing.parser.util.ErrorReporter {
 		
 		private final String fileName;
@@ -61,7 +60,7 @@ public class ClosureCompiler {
 		}
 
 		IProblem[] problems(){
-			return problems.toArray(new IProblem[problems.size()]);
+			return problems.toArray(new DefaultProblem[problems.size()]);
 		}
 		
 		private void addProblem(String description, SourcePosition location, int severity){
@@ -76,7 +75,6 @@ public class ClosureCompiler {
 						-1,
 						location.line,
 						location.column);
-			System.out.println(result.toString());
 			problems.add(result);
 		}
 	}
@@ -118,7 +116,7 @@ public class ClosureCompiler {
 		ProgramTree tree = parser.parseProgram();
 		AST ast = AST.newAST(AST.JLS3);
 		ast.setDefaultNodeFlag(ASTNode.ORIGINAL);
-		DOMTransformer transformer = new DOMTransformer(ast, parser.getComments());
+		ClosureCompilerASTConverter transformer = new ClosureCompilerASTConverter(ast, parser.getComments());
 		JavaScriptUnit $ = (JavaScriptUnit) transformer.transform(null,tree);
 		$.setLineEndTable(LineNumberComputer.computeLineTable(source.contents));
 		$.setProblems(errorCollector.problems());

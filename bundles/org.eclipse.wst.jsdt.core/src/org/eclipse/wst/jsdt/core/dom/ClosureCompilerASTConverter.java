@@ -9,84 +9,15 @@
  * 		 Red Hat Inc. - initial API and implementation and/or initial documentation
  *******************************************************************************/
 
-package org.eclipse.wst.jsdt.internal.compiler.closure;
+package org.eclipse.wst.jsdt.core.dom;
 
 import java.util.Iterator;
 import java.util.List;
 
 import org.eclipse.core.runtime.Assert;
-import org.eclipse.wst.jsdt.core.dom.AST;
-import org.eclipse.wst.jsdt.core.dom.ASTNode;
-import org.eclipse.wst.jsdt.core.dom.ArrayAccess;
-import org.eclipse.wst.jsdt.core.dom.ArrayInitializer;
-import org.eclipse.wst.jsdt.core.dom.ArrayName;
-import org.eclipse.wst.jsdt.core.dom.ArrowFunctionExpression;
-import org.eclipse.wst.jsdt.core.dom.Assignment;
 import org.eclipse.wst.jsdt.core.dom.Assignment.Operator;
-import org.eclipse.wst.jsdt.core.dom.Block;
-import org.eclipse.wst.jsdt.core.dom.BodyDeclaration;
-import org.eclipse.wst.jsdt.core.dom.BooleanLiteral;
-import org.eclipse.wst.jsdt.core.dom.BreakStatement;
-import org.eclipse.wst.jsdt.core.dom.CatchClause;
-import org.eclipse.wst.jsdt.core.dom.ChildListPropertyDescriptor;
-import org.eclipse.wst.jsdt.core.dom.ChildPropertyDescriptor;
-import org.eclipse.wst.jsdt.core.dom.ClassInstanceCreation;
-import org.eclipse.wst.jsdt.core.dom.ConditionalExpression;
-import org.eclipse.wst.jsdt.core.dom.ContinueStatement;
-import org.eclipse.wst.jsdt.core.dom.DoStatement;
-import org.eclipse.wst.jsdt.core.dom.ExportDeclaration;
-import org.eclipse.wst.jsdt.core.dom.Expression;
-import org.eclipse.wst.jsdt.core.dom.ExpressionStatement;
-import org.eclipse.wst.jsdt.core.dom.FieldAccess;
-import org.eclipse.wst.jsdt.core.dom.ForInStatement;
-import org.eclipse.wst.jsdt.core.dom.ForOfStatement;
-import org.eclipse.wst.jsdt.core.dom.ForStatement;
-import org.eclipse.wst.jsdt.core.dom.FunctionDeclaration;
-import org.eclipse.wst.jsdt.core.dom.FunctionExpression;
-import org.eclipse.wst.jsdt.core.dom.FunctionInvocation;
-import org.eclipse.wst.jsdt.core.dom.IfStatement;
-import org.eclipse.wst.jsdt.core.dom.ImportDeclaration;
-import org.eclipse.wst.jsdt.core.dom.InfixExpression;
-import org.eclipse.wst.jsdt.core.dom.JSdoc;
-import org.eclipse.wst.jsdt.core.dom.JavaScriptUnit;
-import org.eclipse.wst.jsdt.core.dom.LabeledStatement;
-import org.eclipse.wst.jsdt.core.dom.ListExpression;
 import org.eclipse.wst.jsdt.core.dom.Modifier.ModifierKeyword;
-import org.eclipse.wst.jsdt.core.dom.ModuleSpecifier;
-import org.eclipse.wst.jsdt.core.dom.Name;
-import org.eclipse.wst.jsdt.core.dom.NullLiteral;
-import org.eclipse.wst.jsdt.core.dom.NumberLiteral;
-import org.eclipse.wst.jsdt.core.dom.ObjectLiteral;
-import org.eclipse.wst.jsdt.core.dom.ObjectLiteralField;
 import org.eclipse.wst.jsdt.core.dom.ObjectLiteralField.FieldKind;
-import org.eclipse.wst.jsdt.core.dom.ObjectName;
-import org.eclipse.wst.jsdt.core.dom.ParenthesizedExpression;
-import org.eclipse.wst.jsdt.core.dom.PostfixExpression;
-import org.eclipse.wst.jsdt.core.dom.PrefixExpression;
-import org.eclipse.wst.jsdt.core.dom.RegularExpressionLiteral;
-import org.eclipse.wst.jsdt.core.dom.RestElementName;
-import org.eclipse.wst.jsdt.core.dom.ReturnStatement;
-import org.eclipse.wst.jsdt.core.dom.SimpleName;
-import org.eclipse.wst.jsdt.core.dom.SimplePropertyDescriptor;
-import org.eclipse.wst.jsdt.core.dom.SingleVariableDeclaration;
-import org.eclipse.wst.jsdt.core.dom.SpreadElement;
-import org.eclipse.wst.jsdt.core.dom.Statement;
-import org.eclipse.wst.jsdt.core.dom.StringLiteral;
-import org.eclipse.wst.jsdt.core.dom.StructuralPropertyDescriptor;
-import org.eclipse.wst.jsdt.core.dom.SwitchCase;
-import org.eclipse.wst.jsdt.core.dom.SwitchStatement;
-import org.eclipse.wst.jsdt.core.dom.TemplateElement;
-import org.eclipse.wst.jsdt.core.dom.TemplateLiteral;
-import org.eclipse.wst.jsdt.core.dom.ThrowStatement;
-import org.eclipse.wst.jsdt.core.dom.TryStatement;
-import org.eclipse.wst.jsdt.core.dom.TypeDeclaration;
-import org.eclipse.wst.jsdt.core.dom.VariableDeclarationExpression;
-import org.eclipse.wst.jsdt.core.dom.VariableDeclarationFragment;
-import org.eclipse.wst.jsdt.core.dom.VariableDeclarationStatement;
-import org.eclipse.wst.jsdt.core.dom.VariableKind;
-import org.eclipse.wst.jsdt.core.dom.WhileStatement;
-import org.eclipse.wst.jsdt.core.dom.WithStatement;
-import org.eclipse.wst.jsdt.core.dom.YieldExpression;
 
 import com.google.javascript.jscomp.parsing.parser.IdentifierToken;
 import com.google.javascript.jscomp.parsing.parser.Token;
@@ -165,22 +96,23 @@ import com.google.javascript.jscomp.parsing.parser.trees.YieldExpressionTree;
 import com.google.javascript.jscomp.parsing.parser.util.SourceRange;
 
 /**
+ * Converts closure compiler's IR model to DOM AST.
  * @author Gorkem Ercan
  *
  */
 @SuppressWarnings("unchecked")
-public class DOMTransformer {
+public class ClosureCompilerASTConverter {
 
 	/**
 	 * 
 	 */
-	private static final String SUPER = "super"; //$NON-NLS-1$
+	private static final String KEYWORD_SUPER = "super"; //$NON-NLS-1$
 	private final AST ast;
 	private final List<Comment> comments;
 	private Comment currentComment;
 	private final Iterator<Comment> nextCommentIter;
 
-	public DOMTransformer(AST t, List<Comment> comment){
+	public ClosureCompilerASTConverter(AST t, List<Comment> comment){
 		this.ast = t;
 		this.comments = comment;
 	    this.nextCommentIter = comments.iterator();
@@ -191,7 +123,7 @@ public class DOMTransformer {
     public ASTNode transform(StructuralPropertyDescriptor property, ParseTree tree) {
     	if(tree == null )
     		return null;
-        ASTNode node = process(property, tree);
+    	ASTNode node = process(property, tree);
         if (node == null ) 
         	return null;
         setSourceRange(node, tree);
@@ -486,7 +418,7 @@ public class DOMTransformer {
 	private ASTNode processComputedPropertyGetter(ComputedPropertyGetterTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
-		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.property);
+		transformAndSetProperty($,FunctionDeclaration.METHOD_NAME_PROPERTY,tree.property);
 		$.modifiers().add(ast.newModifier(ModifierKeyword.GET_KEYWORD));
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
@@ -966,7 +898,8 @@ public class DOMTransformer {
 	 */
 	private ASTNode processImportDecl(ImportDeclarationTree tree) {
 		ImportDeclaration $ = ast.newImportDeclaration();
-		$.setSource(transformStringLiteral(tree.moduleSpecifier.asLiteral()));
+		if(tree.moduleSpecifier != null)
+			$.setSource(transformStringLiteral(tree.moduleSpecifier.asLiteral()));
 		if(tree.defaultBindingIdentifier != null){
 			ModuleSpecifier defaultModule = ast.newModuleSpecifier();
 			defaultModule.setDefault(true);
@@ -1056,6 +989,9 @@ public class DOMTransformer {
 	 */
 	private ASTNode processName(StructuralPropertyDescriptor property, IdentifierExpressionTree tree) {
 		Class<?> claz = classForProperty(property);
+		if(tree.identifierToken == null){
+			return null;
+		}
 		SimpleName sn = transformLabelName(tree.identifierToken);
 		if(claz.isAssignableFrom(SingleVariableDeclaration.class)){
 			SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
@@ -1229,11 +1165,14 @@ public class DOMTransformer {
 	 * @return
 	 */
 	private ASTNode processPropertyGet(StructuralPropertyDescriptor property, MemberExpressionTree tree) {
-		SimpleName name = transformLabelName(tree.memberName);
+		SimpleName name = null;
+		if(tree.memberName != null)
+			name = transformLabelName(tree.memberName);
 		if(tree.operand == null && classForProperty(property) == SimpleName.class)
 			return name;
 		FieldAccess $ = ast.newFieldAccess();
-		$.setName(name);
+		if(name != null)
+			$.setName(name);
 		transformAndSetProperty($,FieldAccess.EXPRESSION_PROPERTY,tree.operand);
 		return $;
 	}
@@ -1318,7 +1257,7 @@ public class DOMTransformer {
 	private ASTNode processSuper(SuperExpressionTree tree) {
 		//FIXME: we need a better way to handle super references. Simply
 		// treating as a name is not enough.
-		return ast.newSimpleName(SUPER);
+		return ast.newSimpleName(KEYWORD_SUPER);
 	}
 
 	/**
@@ -1484,6 +1423,9 @@ public class DOMTransformer {
 	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
 		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
 		//TODO: Handle destructuring assignment
+		if(tree.lvalue== null){
+			System.out.println("LVALUE is null");
+		}
 		transformAndSetProperty($,VariableDeclarationFragment.PATTERN_PROPERTY,tree.lvalue);
 		transformAndSetProperty($,VariableDeclarationFragment.INITIALIZER_PROPERTY,tree.initializer);
 		return $;
@@ -1671,9 +1613,9 @@ public class DOMTransformer {
 	}
 
 	private SimpleName transformLabelName(IdentifierToken token) {
-	    	SimpleName $ = ast.newSimpleName(token.value);
-	        setSourceRange($, token);
-	        return $;
+		SimpleName $ = ast.newSimpleName(token.value);
+		setSourceRange($, token);
+		return $;
 	 }
 
 	private ASTNode transformNullLiteral(Token token) {
@@ -1703,14 +1645,15 @@ public class DOMTransformer {
 	}
 	
 	private ASTNode transformRegExpLiteral(Token token) {
-		RegularExpressionLiteral $ = ast.newRegularExpressionLiteral(token.asLiteral().value);
+		RegularExpressionLiteral $ = ast.newRegularExpressionLiteral();
+		$.internalSetRegularExpression(token.asLiteral().value);
 		setSourceRange($,token);
 		return $;
 	}
 	
 	private StringLiteral transformStringLiteral(Token token) {
 		StringLiteral $ = ast.newStringLiteral();
-		$.setEscapedValue(token.asLiteral().value);
+		$.internalSetEscapedValue(token.asLiteral().value);
 		setSourceRange($,token);
 		return $;
 	}
