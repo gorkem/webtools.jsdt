@@ -242,9 +242,6 @@ public class ExportDeclaration extends ASTNode {
 	}
 
 	public void setDeclaration(ASTNode declaration) {
-		if (declaration == null) {
-			throw new IllegalArgumentException();
-		}
 		ASTNode oldChild = this.declaration;
 		preReplaceChild(oldChild, declaration, DECLARATION_PROPERTY);
 		this.declaration = declaration;

@@ -263,9 +263,11 @@ public class JsCodeIRGenerator extends ASTVisitor {
 
 		// TODO (Eugene Melekhov) it's not very elegant, but I don't know
 		// other way to do it yet
-		int nt = node.getParent().getNodeType();
-		if (nt != ASTNode.FOR_IN_STATEMENT && nt != ASTNode.FOR_OF_STATEMENT) {
-			value = seqVa(value, semiOpt());
+		if (node.getParent() != null) {
+			int nt = node.getParent().getNodeType();
+			if (nt != ASTNode.FOR_IN_STATEMENT && nt != ASTNode.FOR_OF_STATEMENT) {
+				value = seqVa(value, semiOpt());
+			}
 		}
 		return false;
 	}

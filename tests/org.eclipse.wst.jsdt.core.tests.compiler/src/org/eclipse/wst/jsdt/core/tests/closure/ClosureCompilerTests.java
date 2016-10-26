@@ -492,6 +492,24 @@ public class ClosureCompilerTests {
 		assertFalse(yieldE.getDelegate());
 		assertNotNull(yieldE.getArgument());
 	}
+	
+	@Test
+	public void testFunctionCallTolerantParsing(){
+		JavaScriptUnit unit = parse("f(a function(){} c);");
+		assertNotNull(unit);
+	}
+	
+	@Test
+	public void testInvalidForIn(){
+		JavaScriptUnit unit = parse("for (var i, i2 in {});");
+		assertNotNull(unit);
+	}
+	
+	@Test
+	public void testComplexRestInArrowFailure(){
+		JavaScriptUnit unit = parse("(a,...[a]) => 0;");
+		assertNotNull(unit);
+	}
 
 	@Test
 	public void testEmptyStatement(){
@@ -1470,6 +1488,12 @@ public class ClosureCompilerTests {
 	}
 	
 	@Test
+	public void testInvalidObjectLiteral(){
+		JavaScriptUnit unit = parse("({get[a,b]:0})");
+		assertNotNull(unit);
+	}
+	
+	@Test
 	public void testChainFunctionCall(){
 		JavaScriptUnit unit = parse("browser \n"+
 									".init({browserName: 'chrome'}) \n" +
@@ -1524,35 +1548,42 @@ public class ClosureCompilerTests {
 		SimpleSourceFile sf = new SimpleSourceFile("es2015-script.js", false );
 		ParserRunner.parse(sf,content,config, new TestErrorReporter() );
 	}
+	
+	@Test
+	public void testTestBuilderJS(){
+		JavaScriptUnit unit = loadParseJs("TestBuilder.js");
+		assertNotNull(unit);
+	}
 
 	// #### Everything.js tests.
 
 	@Test
 	public void testEverythingJS_es5(){
-		testEverythingJs("es5.js");
+		loadParseJs("es5.js");
 	}
 
 	@Test
 	@Ignore
 	public void testEverythingJS_es2015_script(){
-		testEverythingJs("es2015-script.js");
+		loadParseJs("es2015-script.js");
 	}
 
 	@Test
 	@Ignore
 	public void testEverythingJS_es2015_module(){
-		testEverythingJs("es2015-module.js");
+		loadParseJs("es2015-module.js");
 	}
 
 	private JavaScriptUnit parse(String content){
 		return ClosureCompiler.newInstance().toggleComments(true).setSource(content).parse();
 	}
 
-	private void testEverythingJs(String file){
+	private JavaScriptUnit loadParseJs(String file){
 		InputStream in = this.getClass().getResourceAsStream(file);
 		JavaScriptUnit unit = ClosureCompiler.newInstance().toggleComments(true).setSource(readFile(in)).parse();
 		assertNotNull(unit);
 		assertFalse(unit.statements().isEmpty());
+		return unit;
 	}
 
 	private String readFile(InputStream input){

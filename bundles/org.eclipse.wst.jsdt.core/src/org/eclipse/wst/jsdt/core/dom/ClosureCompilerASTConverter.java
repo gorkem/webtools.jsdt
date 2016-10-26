@@ -14,7 +14,6 @@ package org.eclipse.wst.jsdt.core.dom;
 import java.util.Iterator;
 import java.util.List;
 
-import org.eclipse.core.runtime.Assert;
 import org.eclipse.wst.jsdt.core.dom.Assignment.Operator;
 import org.eclipse.wst.jsdt.core.dom.Modifier.ModifierKeyword;
 import org.eclipse.wst.jsdt.core.dom.ObjectLiteralField.FieldKind;
@@ -97,16 +96,15 @@ import com.google.javascript.jscomp.parsing.parser.util.SourceRange;
 
 /**
  * Converts closure compiler's IR model to DOM AST.
+ * 
  * @author Gorkem Ercan
  *
  */
 @SuppressWarnings("unchecked")
 public class ClosureCompilerASTConverter {
 
-	/**
-	 * 
-	 */
 	private static final String KEYWORD_SUPER = "super"; //$NON-NLS-1$
+	private static final boolean DEBUG = false;
 	private final AST ast;
 	private final List<Comment> comments;
 	private Comment currentComment;
@@ -121,12 +119,20 @@ public class ClosureCompilerASTConverter {
 	}
 
     public ASTNode transform(StructuralPropertyDescriptor property, ParseTree tree) {
+    	if(DEBUG){
+    		System.out.println(">> transform:: property : "+ property +" tree: "+tree);  //$NON-NLS-1$//$NON-NLS-2$
+    	}
+    	
     	if(tree == null )
     		return null;
     	ASTNode node = process(property, tree);
         if (node == null ) 
         	return null;
         setSourceRange(node, tree);
+        if(DEBUG){
+        	System.out.println("<< transform:: tree: "+tree +" --> node:"+ node); //$NON-NLS-1$ //$NON-NLS-2$
+        }
+        
         return node;
       }
 
@@ -240,16 +246,15 @@ public class ClosureCompilerASTConverter {
         case OBJECT_LITERAL_EXPRESSION:
           return processObjectLiteral(node.asObjectLiteralExpression());
         case COMPUTED_PROPERTY_GETTER:
-          return  processComputedPropertyGetter(node.asComputedPropertyGetter());
+          return  processComputedPropertyGetter(property, node.asComputedPropertyGetter());
         case COMPUTED_PROPERTY_SETTER:
-           return processComputedPropertySetter(node.asComputedPropertySetter());
+           return processComputedPropertySetter(property, node.asComputedPropertySetter());
         case COMPUTED_PROPERTY_METHOD:
-           return processComputedPropertyMethod(node.asComputedPropertyMethod());
+        	return processComputedPropertyMethod(property, node.asComputedPropertyMethod());
         case COMPUTED_PROPERTY_DEFINITION:
         case COMPUTED_PROPERTY_MEMBER_VARIABLE:
-        	// Handled on processObjectLiteral should never happen here
-        	Assert.isTrue(false);
-        	break;
+        	// Handled on processObjectLiteral should never happen here for legal JS
+        	return null;
         case RETURN_STATEMENT:
           return processReturnStatement(node.asReturnStatement());
         case POSTFIX_EXPRESSION:
@@ -291,8 +296,8 @@ public class ClosureCompilerASTConverter {
           return processSetAccessor(property, node.asSetAccessor());
         case FORMAL_PARAMETER_LIST:
         	//Should be handled on processFunction
-        	Assert.isTrue(false);
-        	break;
+        	// if we end up here it is probably because of tolerant parsing 
+        	return null;
         case CLASS_DECLARATION:
           return processClassDeclaration(property, node.asClassDeclaration());
         case SUPER_EXPRESSION:
@@ -330,7 +335,7 @@ public class ClosureCompilerASTConverter {
         case DEFAULT_PARAMETER:
           return processDefaultParameter(property, node.asDefaultParameter());
         case REST_PARAMETER:
-          return processRestParameter(node.asRestParameter());
+          return processRestParameter(property, node.asRestParameter());
         case SPREAD_EXPRESSION:
           return processSpreadExpression(node.asSpreadExpression());
 
@@ -385,7 +390,7 @@ public class ClosureCompilerASTConverter {
 	 * @param asComputedPropertyMethod
 	 * @return
 	 */
-	private ASTNode processComputedPropertyMethod(ComputedPropertyMethodTree tree) {
+	private ASTNode processComputedPropertyMethod(StructuralPropertyDescriptor property, ComputedPropertyMethodTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		FunctionDeclarationTree methodTree= tree.method.asFunctionDeclaration();
 		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY, methodTree.functionBody);
@@ -393,14 +398,14 @@ public class ClosureCompilerASTConverter {
 		if(methodTree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
-		return $;
+		return adjustFunctionDeclarationToProperty(property,$);
 	}
 
 	/**
 	 * @param asComputedPropertySetter
 	 * @return
 	 */
-	private ASTNode processComputedPropertySetter(ComputedPropertySetterTree tree) {
+	private ASTNode processComputedPropertySetter(StructuralPropertyDescriptor property, ComputedPropertySetterTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
 		transformAndSetProperty($,FunctionDeclaration.METHOD_NAME_PROPERTY,tree.property);
@@ -408,14 +413,14 @@ public class ClosureCompilerASTConverter {
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
-		return $;
+		return adjustFunctionDeclarationToProperty(property,$);
 	}
 
 	/**
 	 * @param asComputedPropertyGetter
 	 * @return
 	 */
-	private ASTNode processComputedPropertyGetter(ComputedPropertyGetterTree tree) {
+	private ASTNode processComputedPropertyGetter(StructuralPropertyDescriptor property, ComputedPropertyGetterTree tree) {
 		FunctionDeclaration $ = ast.newFunctionDeclaration();
 		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
 		transformAndSetProperty($,FunctionDeclaration.METHOD_NAME_PROPERTY,tree.property);
@@ -423,7 +428,7 @@ public class ClosureCompilerASTConverter {
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
-		return $;
+		return adjustFunctionDeclarationToProperty(property,$);
 	}
 
 	/**
@@ -464,7 +469,9 @@ public class ClosureCompilerASTConverter {
 	 */
 	private ASTNode processAssignmentRestElement(AssignmentRestElementTree tree) {
 		RestElementName $ = ast.newRestElementName();
-		$.setArgument(transformLabelName(tree.identifier));
+		if(tree.identifier != null){
+			$.setArgument(transformLabelName(tree.identifier));
+		}
 		return $;
 	}
 
@@ -551,12 +558,16 @@ public class ClosureCompilerASTConverter {
 	 */
 	private ASTNode processClassDeclaration(StructuralPropertyDescriptor property, ClassDeclarationTree tree) {
 		TypeDeclaration $ = ast.newTypeDeclaration();
-		$.setName(transformLabelName(tree.name));
+		if(tree.name != null){
+			$.setName(transformLabelName(tree.name));
+		}
 		transformAndSetProperty($,TypeDeclaration.SUPERCLASS_EXPRESSION_PROPERTY,tree.superClass);
 		for(ParseTree child : tree.elements){
-			if(child.type != ParseTreeType.EMPTY_STATEMENT){
-				$.bodyDeclarations().add(transform(TypeDeclaration.BODY_DECLARATIONS_PROPERTY,child));
-			}
+					final ASTNode declaration = transform(TypeDeclaration.BODY_DECLARATIONS_PROPERTY,child);
+					// We can get empty statements from closure compiler due to tolerant parsing 
+					if(declaration instanceof EmptyStatement)
+						continue;
+					$.bodyDeclarations().add(declaration);
 		}
 		attachJSDoc(tree,$);
 		Class<?> claz = classForProperty(property);
@@ -690,7 +701,9 @@ public class ClosureCompilerASTConverter {
 	 */
 	private ASTNode processExportSpec(ExportSpecifierTree tree) {
 		ModuleSpecifier $ = ast.newModuleSpecifier();
-		$.setLocal(transformLabelName(tree.importedName));
+		if(tree.importedName != null){
+			$.setLocal(transformLabelName(tree.importedName));
+		}
 		if(tree.destinationName != null)
 			$.setDiscoverableName(transformLabelName(tree.destinationName));
 		return $;
@@ -773,8 +786,11 @@ public class ClosureCompilerASTConverter {
 		
 		if(tree.kind == FunctionDeclarationTree.Kind.ARROW){
 			ArrowFunctionExpression $ = ast.newArrowFunctionExpression();
-			tryTransformAndSetProperty($,ArrowFunctionExpression.BODY_PROPERTY,tree.functionBody);
-			tryTransformAndSetProperty($,ArrowFunctionExpression.EXPRESSION_PROPERTY,tree.functionBody);
+			if(tree.functionBody.type == ParseTreeType.BLOCK){
+				transformAndSetProperty($,ArrowFunctionExpression.BODY_PROPERTY,tree.functionBody);
+			}else{
+				transformAndSetProperty($,ArrowFunctionExpression.EXPRESSION_PROPERTY,tree.functionBody);
+			}
 			if(tree.formalParameterList != null ){ 
 				for(ParseTree param : tree.formalParameterList.parameters){
 					$.parameters().add(transform(ArrowFunctionExpression.PARAMETERS_PROPERTY,param));
@@ -820,20 +836,26 @@ public class ClosureCompilerASTConverter {
 			}
 		}
 		
+		return adjustFunctionDeclarationToProperty(property, $);
+			
+	}
+
+	private ASTNode adjustFunctionDeclarationToProperty(final StructuralPropertyDescriptor property, final FunctionDeclaration declaration) {
 		Class<?> claz = classForProperty(property);
+
+		//test and return FunctionDeclaration first 
 		if(claz.isAssignableFrom(FunctionDeclaration.class)){
-			return $;
+			return declaration;
 		}
 		if(claz.isAssignableFrom(Expression.class)){
 			FunctionExpression e = ast.newFunctionExpression();
-			e.setMethod($);
+			e.setMethod(declaration);
 			return e;
 		}
 		if(claz.isAssignableFrom(Statement.class)){
-			return ast.newFunctionDeclarationStatement($);
+			return ast.newFunctionDeclarationStatement(declaration);
 		}
-		return $;
-			
+		return declaration;
 	}
 
 	/**
@@ -842,9 +864,11 @@ public class ClosureCompilerASTConverter {
 	 */
 	private ASTNode processFunctionCall(CallExpressionTree tree) {
 		FunctionInvocation $  = ast.newFunctionInvocation();
-		tryTransformAndSetProperty($,FunctionInvocation.NAME_PROPERTY,tree.operand);
-		if($.getName() == null )
-			tryTransformAndSetProperty($, FunctionInvocation.EXPRESSION_PROPERTY,tree.operand);
+		if(tree.operand.type == ParseTreeType.IDENTIFIER_EXPRESSION){
+			transformAndSetProperty($,FunctionInvocation.NAME_PROPERTY,tree.operand);
+		}else{
+			transformAndSetProperty($,FunctionInvocation.EXPRESSION_PROPERTY,tree.operand);
+		}
 		for (ParseTree pt : tree.arguments.arguments) {
 			$.arguments().add(transform(FunctionInvocation.ARGUMENTS_PROPERTY, pt));
 		}
@@ -863,16 +887,7 @@ public class ClosureCompilerASTConverter {
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
-		Class<?> claz = classForProperty(property);
-		if(claz.isAssignableFrom(Expression.class)){
-			FunctionExpression fe = ast.newFunctionExpression();
-			fe.setMethod($);
-			return fe;
-		}
-		if(claz.isAssignableFrom(Statement.class)){
-			return ast.newFunctionDeclarationStatement($);
-		}
-		return $;
+		return adjustFunctionDeclarationToProperty(property, $);
 	}
 	
 	/**
@@ -888,7 +903,7 @@ public class ClosureCompilerASTConverter {
 	}
 
 	private ASTNode processIllegalToken(ParseTree node) {
-    	System.out.println( "Unsupported syntax: " + node.type +" at "+ node.location.start.line +1);
+    	System.out.println( "Unsupported syntax: " + node.type +" at "+ node.location.start.line +1);  //$NON-NLS-1$//$NON-NLS-2$
         return ast.newEmptyStatement();
       }
 	
@@ -963,8 +978,8 @@ public class ClosureCompilerASTConverter {
 			case REGULAR_EXPRESSION:
 				return transformRegExpLiteral(tree.literalToken);
 			default :
-		          throw new IllegalStateException("Unexpected literal type: "
-		                      + tree.literalToken.getClass() + " type: "
+		          throw new IllegalStateException("Unexpected literal type: " //$NON-NLS-1$
+		                      + tree.literalToken.getClass() + " type: " //$NON-NLS-1$
 		                      + tree.literalToken.type);
 		}
 	}
@@ -976,7 +991,8 @@ public class ClosureCompilerASTConverter {
 	private ASTNode processModuleImport(ModuleImportTree tree) {
 		ImportDeclaration $ = ast.newImportDeclaration();
 		ModuleSpecifier m = ast.newModuleSpecifier();
-		m.setLocal(transformLabelName(tree.name));
+		if(tree.name != null)
+			m.setLocal(transformLabelName(tree.name));
 		m.setDiscoverableName(transformLabelName(tree.from.asIdentifier()));
 		m.setNamespace(true);
 		$.specifiers().add(m);
@@ -1171,8 +1187,9 @@ public class ClosureCompilerASTConverter {
 		if(tree.operand == null && classForProperty(property) == SimpleName.class)
 			return name;
 		FieldAccess $ = ast.newFieldAccess();
-		if(name != null)
+		if(name != null){
 			$.setName(name);
+		}
 		transformAndSetProperty($,FieldAccess.EXPRESSION_PROPERTY,tree.operand);
 		return $;
 	}
@@ -1183,7 +1200,8 @@ public class ClosureCompilerASTConverter {
 	 */
 	private ASTNode processPropertyNameAssignment(PropertyNameAssignmentTree tree) {
 		VariableDeclarationFragment vdf = ast.newVariableDeclarationFragment();
-		vdf.setName(transformLabelName((IdentifierToken) tree.name));
+		if(tree.name != null)
+			vdf.setName(transformLabelName((IdentifierToken) tree.name));
 		transformAndSetProperty(vdf,VariableDeclarationFragment.INITIALIZER_PROPERTY,tree.value);
 		return ast.newFieldDeclaration(vdf);
 	}
@@ -1192,15 +1210,20 @@ public class ClosureCompilerASTConverter {
 	 * @param asRestParameter
 	 * @return
 	 */
-	private ASTNode processRestParameter(RestParameterTree tree) {
-		SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
+	private ASTNode processRestParameter(StructuralPropertyDescriptor property, RestParameterTree tree) {
+		RestElementName rest = null;
 		if(tree.identifier != null){
-			RestElementName rest = ast.newRestElementName();
+			rest = ast.newRestElementName();
 			rest.setArgument(transformLabelName(tree.identifier));
-			$.setPattern(rest);
+		}		
+		if(classForProperty(property).isAssignableFrom(SingleVariableDeclaration.class)){
+			SingleVariableDeclaration $ = ast.newSingleVariableDeclaration();
+			if(rest !=null)
+				$.setPattern(rest);
+			$.setVarargs(true);
+			return $;
 		}
-		$.setVarargs(true);
-		return $;
+		return rest;
 	}
 
 	/**
@@ -1223,21 +1246,13 @@ public class ClosureCompilerASTConverter {
 		$.setMethodName(transformObjectLitKeyAsString(tree.propertyName));
 		transformAndSetProperty($,FunctionDeclaration.BODY_PROPERTY,tree.body);
 		final SingleVariableDeclaration p = ast.newSingleVariableDeclaration();
-		p.setName(transformLabelName(tree.parameter));
+		if(tree.parameter != null)
+			p.setName(transformLabelName(tree.parameter));
 		$.parameters().add(p);
 		if(tree.isStatic){
 			$.modifiers().add(ast.newModifier(ModifierKeyword.STATIC_KEYWORD));
 		}
-		Class<?> claz = classForProperty(property);
-		if(claz.isAssignableFrom(Expression.class)){
-			FunctionExpression fe = ast.newFunctionExpression();
-			fe.setMethod($);
-			return fe;
-		}
-		if(claz.isAssignableFrom(Statement.class)){
-			return ast.newFunctionDeclarationStatement($);
-		}
-		return $;
+		return adjustFunctionDeclarationToProperty(property,$);
 	}
 
 	/**
@@ -1423,9 +1438,6 @@ public class ClosureCompilerASTConverter {
 	private ASTNode processVariableDeclaration(VariableDeclarationTree tree) {
 		VariableDeclarationFragment $ = ast.newVariableDeclarationFragment();
 		//TODO: Handle destructuring assignment
-		if(tree.lvalue== null){
-			System.out.println("LVALUE is null");
-		}
 		transformAndSetProperty($,VariableDeclarationFragment.PATTERN_PROPERTY,tree.lvalue);
 		transformAndSetProperty($,VariableDeclarationFragment.INITIALIZER_PROPERTY,tree.initializer);
 		return $;
@@ -1439,7 +1451,6 @@ public class ClosureCompilerASTConverter {
 		// Only trees with single elements are handled here
 		// multiple elements should be handled on their caller 
 		// process* methods
-		Assert.isTrue(tree.declarations.size() == 1);
 		VariableDeclarationExpression $ = ast.newVariableDeclarationExpression((VariableDeclarationFragment) transform(VariableDeclarationExpression.FRAGMENTS_PROPERTY,tree.declarations.get(0)));
 		$.setKind(convertVariableKind(tree.declarationType));
 		return $;
@@ -1519,7 +1530,7 @@ public class ClosureCompilerASTConverter {
 				startOffset = vs.getJavadoc().getStartPosition();
 			}
 		}
-		node.setSourceRange(startOffset, tree.location.end.offset - startOffset);
+		node.setSourceRange(startOffset, Math.max(tree.location.end.offset - startOffset, 0));
 	}
 
 	/**
@@ -1625,7 +1636,8 @@ public class ClosureCompilerASTConverter {
 	}
 	
 	private ASTNode transformNumberLiteral(Token token) {
-        NumberLiteral $ = ast.newNumberLiteral(token.asLiteral().value);
+        NumberLiteral $ = ast.newNumberLiteral();
+        $.internalSetToken(token.asLiteral().value);
         setSourceRange($, token);
         return $;
       }
@@ -1633,7 +1645,7 @@ public class ClosureCompilerASTConverter {
 	private SimpleName transformObjectLitKeyAsString(com.google.javascript.jscomp.parsing.parser.Token token) {
 		SimpleName $ = null;
 		if (token == null) {
-			$ = ast.newSimpleName("");
+			$ = ast.newSimpleName(""); //$NON-NLS-1$
 		}
 		else if (token.type == TokenType.IDENTIFIER) {
 			$ = transformLabelName(token.asIdentifier());
@@ -1661,13 +1673,6 @@ public class ClosureCompilerASTConverter {
 	private void transformAndSetProperty(ASTNode node, StructuralPropertyDescriptor property, ParseTree tree){
 		if(tree == null ) return;
 		safeSetProperty(node, property, transform(property, tree));
-	}
-	private void tryTransformAndSetProperty(ASTNode node, StructuralPropertyDescriptor property, ParseTree tree){
-		if(tree == null || property == null ) return;
-		final ASTNode value = transform(property, tree);
-		if(classForProperty(property).isAssignableFrom(value.getClass())){
-			safeSetProperty(node, property, value);
-		}
 	}
 	
 	private void safeSetProperty(ASTNode node, StructuralPropertyDescriptor property, Object value){
