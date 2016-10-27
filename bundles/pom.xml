@@ -23,6 +23,7 @@
   <packaging>pom</packaging>
 
   <modules>
+  	<module>com.google.javascript</module>
     <module>org.eclipse.wst.jsdt.core</module>
     <module>org.eclipse.wst.jsdt.manipulation</module>
     <module>org.eclipse.wst.jsdt.support.firefox</module>
